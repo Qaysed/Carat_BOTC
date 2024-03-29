@@ -100,7 +100,7 @@ def get_level(line: str):
 
 
 @bot.command()
-async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ERROR"):
+async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ERROR", filter: Optional[str] = None):
     """Sends a number of the most recent log events as a DM. The number is given by limit. Events are filtered by
     logging level. Restricted to developers."""
     if level.upper() not in LogLevelMapping:
@@ -122,6 +122,8 @@ async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ER
                 # exception traces occupy several lines, and for all but the first get_level should fail
                 if level >= log_level:
                     items[-1] += "\n" + line
+        if filter is not None:
+            items = [item for item in items if filter.lower() in item.lower()]
         if limit < len(items):
             items = items[-limit:]
         bytes_data = io.BytesIO("\n".join(items).encode("utf-8"))

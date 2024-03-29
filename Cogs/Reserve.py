@@ -546,7 +546,7 @@ class PreSignupView(nextcord.ui.View):
         logging.exception(f"Ignoring exception in PreSignupView:\n{traceback_text}")
 
     @nextcord.ui.button(label="Sign Up", custom_id="Sign_Up_Command", style=nextcord.ButtonStyle.green)
-    async def signup_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+    async def signup_pre_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.send_message(content=f"{button.label} has been selected!", ephemeral=True)
         if interaction.user.id in self.entry.players:
             await utility.dm_user(interaction.user, "You are already signed up")
@@ -568,7 +568,7 @@ class PreSignupView(nextcord.ui.View):
                                   f"{owner.name}'s reserved game")
 
     @nextcord.ui.button(label="Leave Game", custom_id="Leave_Game_Command", style=nextcord.ButtonStyle.red)
-    async def leave_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+    async def leave_pre_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.send_message(content=f"{button.label} has been selected!", ephemeral=True)
         if interaction.user.id not in self.entry.players:
             await utility.dm_user(interaction.user, "You are not signed up")
@@ -706,27 +706,30 @@ class NotEnoughPlayersView(nextcord.ui.View):
 
     @nextcord.ui.button(label="Switch to base queue", custom_id="select_base_queue", style=nextcord.ButtonStyle.blurple,
                         row=1)
-    async def select_base_queue_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+    async def not_enough_select_base_queue_callback(self, button: nextcord.ui.Button,
+                                                    interaction: nextcord.Interaction):
         await interaction.send(content="Joining base queue")
         await switch_to_queue(self.queue_cog, self.helper, self.entry, "Base")
         await self.finish(interaction)
 
     @nextcord.ui.button(label="Switch to regular queue", custom_id="select_regular_queue",
                         style=nextcord.ButtonStyle.blurple, row=1)
-    async def select_regular_queue_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+    async def not_enough_select_regular_queue_callback(self, button: nextcord.ui.Button,
+                                                       interaction: nextcord.Interaction):
         await interaction.send(content="Joining regular queue")
         await switch_to_queue(self.queue_cog, self.helper, self.entry, "Regular")
         await self.finish(interaction)
 
     @nextcord.ui.button(label="Switch to experimental queue", custom_id="select_experimental_queue",
                         style=nextcord.ButtonStyle.blurple, row=1)
-    async def select_experimental_queue_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+    async def not_enough_select_experimental_queue_callback(self, button: nextcord.ui.Button,
+                                                            interaction: nextcord.Interaction):
         await interaction.send(content="Joining experimental queue")
         await switch_to_queue(self.queue_cog, self.helper, self.entry, "Experimental")
         await self.finish(interaction)
 
     @nextcord.ui.button(label="Cancel game", custom_id="cancel", style=nextcord.ButtonStyle.red, row=2)
-    async def cancel_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+    async def not_enough_cancel_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.send(content="Game cancelled")
         await self.finish(interaction)
 
