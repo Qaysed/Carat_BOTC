@@ -151,6 +151,11 @@ class Game(commands.Cog):
 
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
+            await game_channel.send(
+                 f"{game_role.mention} Kibitz is now being opened. "
+                 f"Remember to give your ST(s) any feedback you may have!\n" +
+                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A"
+                 )
 
             # React for completion
             await utility.finish_processing(ctx)
