@@ -8,9 +8,6 @@ from dotenv import load_dotenv
 from nextcord.ext import commands
 from nextcord.utils import get
 
-OwnerID = 107209184147185664
-DeveloperIDs = [224643391873482753]
-
 WorkingEmoji = '\U0001F504'
 CompletedEmoji = '\U0001F955'
 DeniedEmoji = '\U000026D4'
@@ -80,6 +77,8 @@ class Helper:
         self.ModRole = get(self.Guild.roles, id=int(os.environ['DOOMSAYER_ROLE_ID']))
         self.LogChannel = get(self.Guild.channels, id=int(os.environ['LOG_CHANNEL_ID']))
         self.StorageLocation = os.environ['STORAGE_LOCATION']
+        self.OwnerId = int(os.environ['OWNER_ID'])
+        self.DeveloperIds = [int(dev_id) for dev_id in os.environ['DEVELOPER_IDS'].split(',') if dev_id.strip().isdigit()]
         if None in [self.Guild, self.TextGamesCategory, self. ReservingForum, self.ArchiveCategory, self.ModRole,
                     self.LogChannel]:
             logging.error("Failed to find required discord entity. Check .env file is correct and Guild is set up")
@@ -155,7 +154,7 @@ class Helper:
             member = author
         return (self.ModRole in member.roles) \
             or (self.get_st_role(game_number) in member.roles) \
-            or (member.id == OwnerID)
+            or (member.id == self.OwnerId)
 
     def authorize_mod_command(self, author: Union[nextcord.Member, nextcord.User]):
         if isinstance(author, nextcord.User):
@@ -163,8 +162,8 @@ class Helper:
             if member is None:
                 logging.warning("Non guild member attempting to use mod command")
                 return False
-            return (self.ModRole in member.roles) or (author.id == OwnerID)
-        return (self.ModRole in author.roles) or (author.id == OwnerID)
+            return (self.ModRole in member.roles) or (author.id == self.OwnerId)
+        return (self.ModRole in author.roles) or (author.id == self.OwnerId)
 
     async def log(self, log_string: str):
         await self.LogChannel.send(log_string)

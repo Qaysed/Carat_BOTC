@@ -14,7 +14,7 @@ from nextcord.ext.commands import DefaultHelpCommand, CommandError
 import utility
 
 LogFile = "Carat.log"
-repository_api_url = "https://api.github.com/repos/JackKBroome/Carat_BOTC"
+repository_api_url = "https://api.github.com/repos/Qaysed/Carat_BOTC"
 
 LogLevelMapping = {'DEBUG': logging.DEBUG,
                    'INFO': logging.INFO,
@@ -29,6 +29,9 @@ logging.basicConfig(filename=LogFile, filemode="w",
 try:
     load_dotenv()
     token = os.environ['TOKEN']
+    repository_api_url = "https://api.github.com/repos/" + os.environ['GITHUB_REPOSITORY']
+    owner_id = int(os.environ['OWNER_ID'])
+    developer_ids = [int(dev_id) for dev_id in os.environ['DEVELOPER_IDS'].split(',') if dev_id.strip().isdigit()]
 except Exception as e:
     message = "Encountered an issue loading environment variables. Ensure .env file exists and is properly formatted " \
               "with all necessary variables.\nException: " + str(e)
@@ -47,7 +50,7 @@ bot = commands.Bot(command_prefix=">",
                    allowed_mentions=allowedMentions,
                    activity=nextcord.Game(">HelpMe or >help"),
                    help_command=help_command,
-                   owner_id=utility.OwnerID)
+                   owner_id=owner_id)
 
 
 # load cogs and print ready message
@@ -100,14 +103,14 @@ def get_level(line: str):
 
 
 @bot.command()
-async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ERROR", filter: Optional[str] = None):
+async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ERROR", filter_string: Optional[str] = None):
     """Sends a number of the most recent log events as a DM. The number is given by limit. Events are filtered by
     logging level. Restricted to developers."""
     if level.upper() not in LogLevelMapping:
         await utility.deny_command(ctx, "Not a valid logging level")
         return
-    if ctx.author.id == utility.OwnerID or \
-            (ctx.author.id in utility.DeveloperIDs and level.upper() in ["WARNING", "ERROR", "CRITICAL"]):
+    if ctx.author.id == owner_id or \
+            (ctx.author.id in developer_ids and level.upper() in ["WARNING", "ERROR", "CRITICAL"]):
         log_level = LogLevelMapping[level.upper()]
         await utility.start_processing(ctx)
         with open(LogFile, "r") as logs:
@@ -122,8 +125,8 @@ async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ER
                 # exception traces occupy several lines, and for all but the first get_level should fail
                 if level >= log_level:
                     items[-1] += "\n" + line
-        if filter is not None:
-            items = [item for item in items if filter.lower() in item.lower()]
+        if filter_string is not None:
+            items = [item for item in items if filter_string.lower() in item.lower()]
         if limit < len(items):
             items = items[-limit:]
         bytes_data = io.BytesIO("\n".join(items).encode("utf-8"))
@@ -240,7 +243,7 @@ async def ReloadMainFiles(ctx: commands.Context):
 
 @bot.command()
 async def Restart(ctx: commands.Context):
-    if ctx.author.id == utility.OwnerID or ctx.author.id in utility.DeveloperIDs:
+    if ctx.author.id == owner_id or ctx.author.id in developer_ids:
         logging.warning("Trying to restart Carat...")
         # bot.close() finishes execution of bot.run(), so Carat terminates and is restarted by the loop in AutoRestart
         await bot.close()

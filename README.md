@@ -17,10 +17,9 @@ Use `>help` or `>HelpMe` for more information.
 
 ## Used By
 
-This project is used by the following discord servers:
+This project is used by the following discord server and its archives:
 
 - [@Blood on the Clocktower Unofficial](http://discord.gg/botc)
-- [@Blood on the Clocktower Unofficial Archive](https://discord.gg/epj5h3yK)
 
 
 ## Game Role Management
@@ -51,7 +50,7 @@ This project is used by the following discord servers:
 - To set up the Queue (Done by Server Moderators) use:
 `>InitQueue [x/r]` 
 
-![Automatic Queue](https://github.com/JackKBroome/Carat_BOTC/blob/main/ReadMe%20Images/Queue.PNG?raw=true)
+![Automatic Queue](https://github.com/Qaysed/Carat_BOTC/blob/main/ReadMe%20Images/Queue.PNG?raw=true)
 
 
  - To Join or leave the Queue use:
@@ -68,13 +67,13 @@ This project is used by the following discord servers:
 
 - When the next game starts Carat will notify the top of the queue as seen below:
 
-![Grimoire Ping](https://github.com/JackKBroome/Carat_BOTC/blob/main/ReadMe%20Images/VoterPing.PNG?raw=true)
+![Grimoire Ping](https://github.com/Qaysed/Carat_BOTC/blob/main/ReadMe%20Images/VoterPing.PNG?raw=true)
 ## Game Sign-ups & Setup
 
 - STs can automate signups through Carat using:
 `>Signup [Game Number] [Player Limit] [Script Name]` 
 
-![Sign up Screen](https://github.com/JackKBroome/Carat_BOTC/blob/main/ReadMe%20Images/SignupSheet.PNG?raw=true)
+![Sign up Screen](https://github.com/Qaysed/Carat_BOTC/blob/main/ReadMe%20Images/SignupSheet.PNG?raw=true)
 
 - STs can also run signups manually using:
 `>AddPlayer [Game Number] [@member]`  
@@ -102,7 +101,7 @@ This project is used by the following discord servers:
 `>PrivateVote [Game Number] [Nominee Name] [Vote]`  
 `>RemovePrivateVote [Game Number] [Nominee Name]`  
 
-![Player Voting](https://github.com/JackKBroome/Carat_BOTC/blob/main/ReadMe%20Images/VoteToPlayers.PNG?raw=true)
+![Player Voting](https://github.com/Qaysed/Carat_BOTC/blob/main/ReadMe%20Images/VoteToPlayers.PNG?raw=true)
 
 
 ## Text Game Voting (ST)
@@ -135,7 +134,7 @@ This project is used by the following discord servers:
 - To count the votes you can:
 `>CountVotes [Game Number] [Nominee]`  
 
-![ST Voting](https://github.com/JackKBroome/Carat_BOTC/blob/main/ReadMe%20Images/VoteInProgress.PNG?raw=true)
+![ST Voting](https://github.com/Qaysed/Carat_BOTC/blob/main/ReadMe%20Images/VoteInProgress.PNG?raw=true)
 
 
 ## Ending & Archiving Games
@@ -144,7 +143,7 @@ This project is used by the following discord servers:
 
 `>EndGame [Game Number]`  
 
-![End Game](https://github.com/JackKBroome/Carat_BOTC/blob/main/ReadMe%20Images/EndGame.PNG?raw=true)
+![End Game](https://github.com/Qaysed/Carat_BOTC/blob/main/ReadMe%20Images/EndGame.PNG?raw=true)
 
 - You can also save games on server (in the Archived games section) by:
 
