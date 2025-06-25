@@ -80,9 +80,8 @@ class Other(commands.Cog):
         """
         if self.helper.authorize_st_command(ctx.author, game_number):
             await utility.start_processing(ctx)
-            threads = await ctx.guild.active_threads()
-            game_threads = [thread for thread in threads if thread.parent_id = self.helper.get_game_channel(game_number).id]
-            for thread in game_threads:
+            threads = self.helper.get_game_channel(game_number).threads
+            for thread in threads:
                 if "ST Thread" in thread.name:
                     await thread.send(message)
             await utility.finish_processing(ctx)
