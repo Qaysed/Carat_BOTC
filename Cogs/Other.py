@@ -246,6 +246,9 @@ class Other(commands.Cog):
                                  'into each channel.\n' +
                                  'Usage examples: `>CreateThreads 1`, `>CreateThreads x3`',
                            inline=False)
+        st_embed.add_field(name=">SendToThreads [game number] [message]",
+                           value='Posts [message] to all active ST Threads with name "ST Thread [player name]" '
+                                 'within the game\s channel.'
         st_embed.add_field(name=">SetReminders [game number] [event] [times]",
                            value="At the given times, sends reminders to the players how long they have until the "
                                  "event occurs. The event argument is optional and defaults to 'Whispers close'. Times "
