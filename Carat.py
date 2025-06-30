@@ -31,13 +31,14 @@ try:
     token = os.environ['TOKEN']
     repository_api_url = "https://api.github.com/repos/" + os.environ['GITHUB_REPOSITORY']
     owner_id = int(os.environ['OWNER_ID'])
-    developer_ids = [int(dev_id) for dev_id in os.environ['DEVELOPER_IDS'].split(',') if dev_id.strip().isdigit()]
 except Exception as e:
     message = "Encountered an issue loading environment variables. Ensure .env file exists and is properly formatted " \
               "with all necessary variables.\nException: " + str(e)
     print(message)
     logging.critical(message)
     sys.exit()
+
+developer_ids = []
 
 intents = nextcord.Intents.all()
 allowedMentions = nextcord.AllowedMentions.all()

@@ -78,7 +78,6 @@ class Helper:
         self.LogChannel = get(self.Guild.channels, id=int(os.environ['LOG_CHANNEL_ID']))
         self.StorageLocation = os.environ['STORAGE_LOCATION']
         self.OwnerId = int(os.environ['OWNER_ID'])
-        self.DeveloperIds = [int(dev_id) for dev_id in os.environ['DEVELOPER_IDS'].split(',') if dev_id.strip().isdigit()]
         if None in [self.Guild, self.TextGamesCategory, self. ReservingForum, self.ArchiveCategory, self.ModRole,
                     self.LogChannel]:
             logging.error("Failed to find required discord entity. Check .env file is correct and Guild is set up")
