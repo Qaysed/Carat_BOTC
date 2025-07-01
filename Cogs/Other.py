@@ -75,6 +75,20 @@ class Other(commands.Cog):
             await utility.deny_command(ctx, "You are not the current ST for game " + game_number)
 
     @commands.command()
+    async def SendToThreads(self, ctx, game_number: str, message):
+        """Sends the same message to all active ST threads named "ST Thread ___"
+        """
+        if self.helper.authorize_st_command(ctx.author, game_number):
+            await utility.start_processing(ctx)
+            threads = self.helper.get_game_channel(game_number).threads
+            for thread in threads:
+                if "ST Thread" in thread.name:
+                    await thread.send(message)
+            await utility.finish_processing(ctx)
+        else:
+            await utility.deny_command(ctx, "You are not the current ST for game " + game_number)
+
+    @commands.command()
     async def HelpMe(self, ctx: commands.Context, command_type: typing.Optional[str] = "no-mod"):
         """Sends a message listing and explaining available commands.
         Can be filtered by appending one of `all, anyone, st, townsquare, mod, no-mod`. Default is `no-mod`"""
@@ -231,6 +245,9 @@ class Other(commands.Cog):
                                  'into each channel.\n' +
                                  'Usage examples: `>CreateThreads 1`, `>CreateThreads x3`',
                            inline=False)
+        st_embed.add_field(name=">SendToThreads [game number] [message]",
+                           value='Posts [message] to all active ST Threads with name "ST Thread [player name]" '
+                                 'within the game\s channel.'
         st_embed.add_field(name=">SetReminders [game number] [event] [times]",
                            value="At the given times, sends reminders to the players how long they have until the "
                                  "event occurs. The event argument is optional and defaults to 'Whispers close'. Times "
