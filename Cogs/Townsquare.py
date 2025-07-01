@@ -991,6 +991,33 @@ class Townsquare(commands.Cog):
         else:
             await utility.deny_command(ctx, "You must be the Storyteller to toggle a player's voting ability")
 
+    @commands.command()
+    async def RecreateNoms(self,ctx: commands.Context, game_number: str):
+        """creates new messages for each nom"""
+        if self.helper.authorize_st_command(ctx.author, game_number):
+            await utility.start_processing(ctx)
+            # add new carat to logging thread
+            kibitz = self.helper.get_kibitz_channel(game_number)
+            log_thread = kibitz.get_thread(self.town_squares[game_number].log_thread)
+            try:
+                if self.bot.user.id not in [m.id for m in log_thread.members]:
+                    await log_thread.join()
+            except:
+                await utility.dm_user(ctx.author, "Could not join the Noms & Votes logging thread in Kibitz. Please add me.")
+            game_role = self.helper.get_game_role(game_number)
+            nom_thread = get(self.helper.Guild.threads, id=self.town_squares[game_number].nomination_thread)
+            for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
+                content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji)
+                nom_message = await nom_thread.send(content=content, embed=embed)
+                nom.message = nom_message.id
+            self.update_storage()
+            await utility.finish_processing(ctx)
+            await utility.dm_user(ctx.author, f"Recreated nominations for {game_number}")
+            await self.log(game_number, f"Recreated nominations")
+        else:
+            await utility.deny_command(ctx, "Not permitted")
+
+
 
 class CountVoteView(nextcord.ui.View):
     cog: Townsquare
