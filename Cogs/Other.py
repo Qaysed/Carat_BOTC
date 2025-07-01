@@ -42,7 +42,7 @@ class Other(commands.Cog):
 
     @commands.command()
     async def CreateThreads(self, ctx, game_number: str, setup_message=None):
-        """Creates a private thread in the game\'s channel for each player.
+        """Creates a private thread in the game's channel for each player.
         The player and all STs are automatically added to each thread. The threads are named "ST Thread [player name]".
         """
         if self.helper.authorize_st_command(ctx.author, game_number):
@@ -247,7 +247,7 @@ class Other(commands.Cog):
                            inline=False)
         st_embed.add_field(name=">SendToThreads [game number] [message]",
                            value='Posts [message] to all active ST Threads with name "ST Thread [player name]" '
-                                 'within the game\s channel.'
+                                 'within the game\'s channel.')
         st_embed.add_field(name=">SetReminders [game number] [event] [times]",
                            value="At the given times, sends reminders to the players how long they have until the "
                                  "event occurs. The event argument is optional and defaults to 'Whispers close'. Times "
