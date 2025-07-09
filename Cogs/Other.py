@@ -1,3 +1,4 @@
+import asyncio
 import typing
 
 import nextcord
@@ -70,6 +71,7 @@ class Other(commands.Cog):
                     await thread.add_user(st)
                 if setup_message is not None:
                     await thread.send(setup_message)
+                await asyncio.sleep(1)
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the current ST for game " + game_number)
