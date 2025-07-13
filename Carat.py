@@ -38,7 +38,7 @@ except Exception as e:
     logging.critical(message)
     sys.exit()
 
-developer_ids = []
+developer_ids = [962747550656528425, 966753006227955832]
 
 intents = nextcord.Intents.all()
 allowedMentions = nextcord.AllowedMentions.all()

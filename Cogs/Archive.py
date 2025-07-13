@@ -1,11 +1,12 @@
 import json
 import os.path
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import List, Dict
 
 import nextcord
 from dataclasses_json import dataclass_json
-from nextcord import InvalidArgument, HTTPException
+from nextcord import InvalidArgument, HTTPException, Message
 from nextcord.ext import tasks, commands
 from nextcord.utils import get
 
@@ -24,7 +25,7 @@ class Game(commands.Cog):
         self.bot = bot
         self.helper = helper
 
-async def copy_history(target: nextcord.abc.Messageable, history) -> int:
+async def copy_history(target: nextcord.abc.Messageable, history: AsyncIterator[Message]) -> int:
     errors = 0
     async for message in history:
         embed = nextcord.Embed(description=message.content)
@@ -158,24 +159,11 @@ class Archive(commands.Cog):
         await utility.finish_processing(ctx)
 
     @commands.command()
-    async def OffServerArchive(self, ctx: commands.Context, archive_server_id: int, member: nextcord.Member, archive_channel_id: int =0):
+    async def OffServerArchive(self, ctx: commands.Context, archive_server_id: int, st: nextcord.Member, archive_channel_id: int =0):
         """Copies the channel the message was sent in to the provided server and channel, message by message.
         Attachments may not be preserved if they are too large. Also creates a discussion thread at the end.
         Public threads are also copied, private threads are not, except where someone specifically excluded or
         included them."""
-        
-        channel_to_archive = ctx.message.channel
-
-        archive_server = self.helper.bot.get_guild(archive_server_id)
-        if archive_server is None:
-            await utility.dm_user(ctx.author, f"Was unable to find server with ID {archive_server_id}")
-            return
-
-        archive_channel = get(archive_server.channels, id=archive_channel_id)
-        if archive_channel is None:
-            archive_channel = await archive_server.create_text_channel(name="Temp Channel")
-            Channel_name = str(channel_to_archive.name) + "-" + str(member.display_name)
-            await archive_channel.edit(name=Channel_name)
                 
         access = self.helper.authorize_mod_command(ctx.author)
         # Ivy Access
@@ -183,12 +171,27 @@ class Archive(commands.Cog):
             # React on Approval
             await utility.start_processing(ctx)
 
-            Unique_role_name = str(member.id)
-            Unique_role = nextcord.utils.get(archive_server.roles, name=Unique_role_name)
-            if Unique_role is None:
-                Unique_role = await archive_server.create_role(name=Unique_role_name)
-            
-            channel_history = channel_to_archive.history(limit=None, oldest_first=True)
+            channel_to_archive = ctx.message.channel
+
+            archive_server = self.helper.bot.get_guild(archive_server_id)
+            if archive_server is None:
+                await utility.dm_user(ctx.author, f"Was unable to find server with ID {archive_server_id}")
+                return
+
+            archive_channel = get(archive_server.channels, id=archive_channel_id)
+            if archive_channel is None:
+                channel_name = str(channel_to_archive.name) + "-" + str(st.display_name)
+                archive_channel = await archive_server.create_text_channel(name=channel_name)
+
+            unique_role_name = str(st.id)
+            unique_role = nextcord.utils.get(archive_server.roles, name=unique_role_name)
+            if unique_role is None:
+                unique_role = await archive_server.create_role(name=unique_role_name)
+
+            # the after parameter might seem weird here. nextcord's pagination for this is broken if after isn't set
+            # and after can be basically any discord object - the ID serves as a timestamp of the creation time
+            # so this should get all messages in the channel
+            channel_history = channel_to_archive.history(limit=None, oldest_first=True, after=channel_to_archive)
 
             errors = await copy_history(archive_channel, channel_history)
 
@@ -204,7 +207,7 @@ class Archive(commands.Cog):
                             invitable=True,
                             reason="Private Thread"
                             )
-                        thread_history = thread.history(limit=None, oldest_first=True)
+                        thread_history = thread.history(limit=None, oldest_first=True, after=channel_to_archive)
                         errors += await copy_history(archive_thread, thread_history)
                         continue
                     except HTTPException:
@@ -218,7 +221,7 @@ class Archive(commands.Cog):
                 try:
                     archive_thread = await archive_channel.create_thread(name=thread.name,
                                                                          type=nextcord.ChannelType.public_thread)
-                    thread_history = thread.history(limit=None, oldest_first=True)
+                    thread_history = thread.history(limit=None, oldest_first=True, after=channel_to_archive)
                     errors += await copy_history(archive_thread, thread_history)
                 except HTTPException:
                     await archive_channel.send(f"Failed to create thread '{thread.name}'")
@@ -226,7 +229,7 @@ class Archive(commands.Cog):
 
             await archive_channel.create_thread(name="Chat about the game", type=nextcord.ChannelType.public_thread)
 
-            await archive_channel.set_permissions(Unique_role, manage_threads=True)
+            await archive_channel.set_permissions(unique_role, manage_threads=True)
 
             await utility.finish_processing(ctx)
             self.threads_by_channel.pop(channel_to_archive.id, None)
