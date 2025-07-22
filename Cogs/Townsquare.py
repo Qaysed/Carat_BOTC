@@ -40,6 +40,7 @@ class Player:
 @dataclass
 class Vote:
     vote: str
+    banshee: bool = False
     bureaucrat: bool = False
     thief: bool = False
 
@@ -108,6 +109,8 @@ def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: N
                 value = 1
                 if vote.thief:
                     value *= -1
+                if vote.banshee:
+                    value *= 2
                 if vote.bureaucrat:
                     value *= 3
                 counter += value
@@ -179,6 +182,13 @@ class Townsquare(commands.Cog):
         else:
             self.emoji["bureaucrat"] = nextcord.PartialEmoji.from_str('\U0001f4ce')  # 📎
             await self.helper.log("Bureaucrat emoji not found, using default")
+        banshee_emoji = get(self.helper.Guild.emojis, name="banshee")
+        if banshee_emoji is not None:
+            self.emoji["banshee"] = nextcord.PartialEmoji.from_str(
+                '{emoji.name}:{emoji.id}'.format(emoji=banshee_emoji))
+        else:
+            self.emoji["banshee"] = nextcord.PartialEmoji.from_str('\U0001f47b')  # 👻
+            await self.helper.log("Banshee emoji not found, using default")
         organ_grinder_emoji = get(self.helper.Guild.emojis, name="organ_grinder")
         if organ_grinder_emoji is not None:
             self.emoji["organ_grinder"] = nextcord.PartialEmoji.from_str(
@@ -1056,6 +1066,9 @@ class CountVoteView(nextcord.ui.View):
     async def check_initial(self):
         if self.player_index == -1:
             self.player_index = 0
+            banshee = next((item for item in self.children if
+                               isinstance(item, nextcord.ui.Button) and item.custom_id == "banshee"))
+            banshee.emoji = self.emoji["banshee"]
             bureaucrat = next((item for item in self.children if
                                isinstance(item, nextcord.ui.Button) and item.custom_id == "bureaucrat"))
             bureaucrat.emoji = self.emoji["bureaucrat"]
@@ -1086,6 +1099,8 @@ class CountVoteView(nextcord.ui.View):
             if player.dead:
                 line = f"{self.emoji['shroud']}{line}"
             if index == self.player_index:
+                if self.nom.votes[player.id].banshee:
+                    line = f"{self.emoji['banshee']}{line}"
                 if self.nom.votes[player.id].bureaucrat:
                     line = f"{self.emoji['bureaucrat']}{line}"
                 if self.nom.votes[player.id].thief:
@@ -1098,6 +1113,7 @@ class CountVoteView(nextcord.ui.View):
         self.nom.private_votes.pop(self.player_list[self.player_index].id, None)
         self.nom.votes[self.player_list[self.player_index].id].vote = vote
         self.player_index += 1
+        next((item for item in self.children if item.custom_id == "banshee")).style = nextcord.ButtonStyle.grey
         next((item for item in self.children if item.custom_id == "bureaucrat")).style = nextcord.ButtonStyle.grey
         next((item for item in self.children if item.custom_id == "thief")).style = nextcord.ButtonStyle.grey
         next((item for item in self.children if item.custom_id == "die")).disabled = False
@@ -1131,6 +1147,16 @@ class CountVoteView(nextcord.ui.View):
         await self.cog.log(self.game_number,
                            f"{self.author} locked vote of {self.player_list[self.player_index - 1].alias}"
                            f" on the nomination of {self.nom.nominee.alias} as no")
+
+    @nextcord.ui.button(label="Count double", custom_id="banshee", style=nextcord.ButtonStyle.grey, row=1)
+    async def banshee_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.defer()
+        if await self.check_initial():
+            return
+        vote = self.nom.votes[self.player_list[self.player_index].id]
+        vote.banshee = not vote.banshee
+        button.style = nextcord.ButtonStyle.blurple if vote.banshee else nextcord.ButtonStyle.grey
+        await self.update_message()
 
     @nextcord.ui.button(label="Count triple", custom_id="bureaucrat", style=nextcord.ButtonStyle.grey, row=1)
     async def bureaucrat_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
