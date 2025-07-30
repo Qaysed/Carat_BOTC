@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import asyncio
 import datetime
 import io
 import json
@@ -412,6 +414,7 @@ class Townsquare(commands.Cog):
                     thread_members = await thread.fetch_members()
                     if player in [tm.member for tm in thread_members]:
                         await thread.add_user(substitute)
+                        await asyncio.sleep(10)
                 for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
                     nom.votes[substitute.id] = nom.votes.pop(player.id)
                     await self.update_nom_message(game_number, nom)
@@ -442,6 +445,7 @@ class Townsquare(commands.Cog):
                 thread_members = await thread.fetch_members()
                 if player in [tm.member for tm in thread_members]:
                     await thread.add_user(substitute)
+                    await asyncio.sleep(10)
             logging.debug(f"Substituted {player} with {substitute} in game {game_number}")
             self.update_storage()
             await utility.finish_processing(ctx)
