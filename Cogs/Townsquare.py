@@ -378,12 +378,23 @@ class Townsquare(commands.Cog):
             return Player(player.id, player.display_name)
 
     @commands.command(aliases=["SubPlayer"])
-    async def SubstitutePlayer(self, ctx: commands.Context, game_number: str, player: nextcord.Member,
+    async def SubstitutePlayer(self, ctx: commands.Context, game_number: str, player: Union[nextcord.Member, str],
                                substitute: nextcord.Member):
         """Exchanges a player in the town square with a substitute.
         Transfers the position, status, nominations and votes of the exchanged player to the substitute, adds the
         substitute to all threads the exchanged player was in, and adds/removes the game role.
         Can be used without the town square."""
+        player_left_server = False
+        if not type(player) == nextcord.Member:
+            player = next((p for p in self.town_squares[game_number].players if p.id == player or p.alias == player), None)
+            current_player = get(self.helper.Guild.members, id=int(player.id))
+            if current_player == None:
+                player_left_server = True
+            else:
+                player = current_player
+        if player_left_server:
+            await self.SubstitutePlayerLeftServer(ctx, game_number, player, substitute)
+            return
         if game_number not in self.town_squares:
             await self.SubstitutePlayerNoTownsquare(ctx, game_number, player, substitute)
             return
@@ -448,6 +459,36 @@ class Townsquare(commands.Cog):
                     await asyncio.sleep(10)
             logging.debug(f"Substituted {player} with {substitute} in game {game_number}")
             self.update_storage()
+            await utility.finish_processing(ctx)
+        else:
+            await utility.deny_command(ctx, "You are not the storyteller for this game")
+
+    async def SubstitutePlayerLeftServer(self, ctx: commands.Context, game_number: str, player: Player,
+                                         substitute: nextcord.Member):
+        if self.helper.authorize_st_command(ctx.author, game_number):
+            if game_number in self.town_squares:
+                await utility.start_processing(ctx)
+                player_list = self.town_squares[game_number].players
+                substitute_existing_player = next((p for p in player_list if p.id == substitute.id), None)
+                if substitute_existing_player is not None:
+                    await utility.deny_command(ctx, f"{substitute.display_name} is already a player.")
+                    return
+                else:
+                    game_role = self.helper.get_game_role(game_number)
+                    await substitute.add_roles(game_role, reason="substituted in")
+                    player.id = substitute.id
+                    player.alias = substitute.display_name
+                    for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
+                        nom.votes[substitute.id] = nom.votes.pop(player.id)
+                        await self.update_nom_message(game_number, nom)
+                await self.log(game_number, f"{ctx.author.mention} has substituted {player.alias} with "
+                                        f"{substitute.display_name}")
+                logging.debug(f"Substituted {player.alias} with {substitute.display_name} in game {game_number} - "
+                          f"current town square: {self.town_squares[game_number]}")
+                self.update_storage()
+            else:
+                await substitute.add_roles(game_role, reason="substituted in")
+                logging.debug(f"Substituted {player.alias} with {substitute.display_name} in game {game_number}")
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the storyteller for this game")
