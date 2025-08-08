@@ -466,8 +466,8 @@ class Townsquare(commands.Cog):
     async def SubstitutePlayerLeftServer(self, ctx: commands.Context, game_number: str, player: Player,
                                          substitute: nextcord.Member):
         if self.helper.authorize_st_command(ctx.author, game_number):
+            await utility.start_processing(ctx)
             if game_number in self.town_squares:
-                await utility.start_processing(ctx)
                 player_list = self.town_squares[game_number].players
                 substitute_existing_player = next((p for p in player_list if p.id == substitute.id), None)
                 if substitute_existing_player is not None:
