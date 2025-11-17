@@ -49,6 +49,9 @@ def default_game_channel_overwrites(game_role: nextcord.Role, st_role: nextcord.
     ni_text_role = get(helper.Guild.roles, name="NIText")
     if ni_text_role is not None:
         permissions[ni_text_role] = nextcord.PermissionOverwrite(view_channel=False)
+    hide_text_games_role = get(helper.Guild.roles, name="hideTextGames")
+    if hide_text_games_role is not None:
+        permissions[hide_text_games_role] = nextcord.PermissionOverwrite(view_channel=False)
     permissions[game_role] = nextcord.PermissionOverwrite(send_messages_in_threads=True, create_public_threads=False,
                                                           create_private_threads=True, manage_messages=True,
                                                           manage_threads=False)

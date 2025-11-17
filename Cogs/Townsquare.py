@@ -527,7 +527,8 @@ class Townsquare(commands.Cog):
         can_nominate = self.helper.authorize_st_command(ctx.author, game_number) or game_role in ctx.author.roles
         nominee = self.get_game_participant(game_number, nominee_identifier)
         nominator = self.get_game_participant(game_number, nominator_identifier) if nominator_identifier else None
-        nom_thread = get(self.helper.Guild.threads, id=self.town_squares[game_number].nomination_thread)
+        game_channel = self.helper.get_game_channel(game_number)
+        nom_thread = game_channel.get_thread(self.town_squares[game_number].nomination_thread)
         if not can_nominate:
             await utility.deny_command(ctx, "You must participate in the game to nominate!")
         elif not self.helper.authorize_st_command(ctx.author,
@@ -1074,6 +1075,16 @@ class Townsquare(commands.Cog):
             await self.log(game_number, f"Recreated nominations")
         else:
             await utility.deny_command(ctx, "Not permitted")
+
+    @commands.command()
+    async def GetTSStatus(self, ctx: commands.Context, game_number: str):
+        if self.helper.authorize_st_command(ctx.author, game_number):
+            json_data = self.town_squares[game_number].to_dict()
+            for nom in json_data.get("nominations", []):
+                nom.pop("private_votes", None)
+            json_str = json.dumps(json_data, indent=2)
+            bytes_data = io.BytesIO(json_str.encode("utf-8"))
+            await ctx.author.send(f"Townsquare {game_number} json", file=nextcord.File(bytes_data, f"Townsquare_{game_number}.json"))
 
 
 

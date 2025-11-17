@@ -168,10 +168,14 @@ class Reminders(commands.Cog):
             return
         earliest_reminder = self.reminder_list[0]
         if datetime.datetime.fromisoformat(earliest_reminder.time) <= utcnow():
-            channel = self.bot.get_channel(earliest_reminder.channel)
-            await channel.send(earliest_reminder.text)
-            self.reminder_list.pop(0)
-            self.update_storage()
+            try:
+                channel = self.bot.get_channel(earliest_reminder.channel)
+                await channel.send(earliest_reminder.text)
+                self.reminder_list.pop(0)
+                self.update_storage()
+            except Exception as e:
+                logging.warning(f"Failed to send reminder: {e}")
+
 
 
 def setup(bot: commands.Bot):

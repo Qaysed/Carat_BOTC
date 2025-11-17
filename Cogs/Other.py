@@ -16,7 +16,7 @@ class Other(commands.Cog):
 
     @commands.command(aliases=("sw",))
     async def StartWhisper(self, ctx, title: str, players: commands.Greedy[nextcord.Member]):
-        """Creates a new thread with the specified title and included members.  This is NOT specific
+        """Creates a new thread with the specified title and included members. This is NOT specific
         to a text game and can be used by anyone that can create and send messages to threads."""
         channel = ctx.channel.parent if isinstance(ctx.channel, nextcord.Thread) else ctx.channel
         auth_perms = channel.permissions_for(ctx.author)
