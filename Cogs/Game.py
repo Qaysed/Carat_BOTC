@@ -27,7 +27,7 @@ class Game(commands.Cog):
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=True)
             game_role = self.helper.get_game_role(game_number)
             await ctx.channel.send(
-                f"{game_role.mention} Kibitz is now being opened - remove your game role to access it. " +
+                f"{game_role.mention} Kibitz is now being opened (found [here]({kibitz_channel.jump_url})) - remove your game role to access it. " +
                 f"Remember to give your ST(s) any feedback you may have!\n" +
                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A")
 
@@ -74,9 +74,10 @@ class Game(commands.Cog):
             # Gather member list & role information
             kibitz_role = self.helper.get_kibitz_role(game_number)
             game_role = self.helper.get_game_role(game_number)
+            kibitz_channel = self.helper.get_kibitz_channel(game_number)
 
             await ctx.channel.send(
-                f"{game_role.mention} Kibitz is now being opened. "
+                f"{game_role.mention} Kibitz is now being opened (found [here]({kibitz_channel.jump_url})). "
                 f"Remember to give your ST(s) any feedback you may have!\n" +
                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A"
             )
