@@ -159,9 +159,7 @@ async def create_channel(owner: int, helper: utility.Helper,
         else:
             raise Exception("Could not find previous or next channel")
     except Exception as error:
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = traceback_text(error)
         logging.warning(f"Could not move r-game channel to desired position. Exception trace:\n{traceback_text}")
 
     # get/create kibitz channel
@@ -556,9 +554,7 @@ class PreSignupView(nextcord.ui.View):
         self.entry = entry
 
     async def on_error(self, error: Exception, item: nextcord.ui.Item, interaction: nextcord.Interaction) -> None:
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = utility.traceback_text(error)
         logging.exception(f"Ignoring exception in PreSignupView:\n{traceback_text}")
 
     @nextcord.ui.button(label="Sign Up", custom_id="Sign_Up_Command", style=nextcord.ButtonStyle.green)
@@ -696,9 +692,7 @@ class EnoughPlayersView(nextcord.ui.View):
         await thread.send("Timed out")
 
     async def on_error(self, error: Exception, item: nextcord.ui.Item, interaction: nextcord.Interaction) -> None:
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = utility.traceback_text(error)
         logging.exception(f"Ignoring exception in EnoughPlayersView:\n{traceback_text}")
 
 
@@ -761,10 +755,7 @@ class NotEnoughPlayersView(nextcord.ui.View):
         await thread.send("Timed out")
 
     async def on_error(self, error: Exception, item: nextcord.ui.Item, interaction: nextcord.Interaction) -> None:
-
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = utility.traceback_text(error)
         logging.exception(f"Ignoring exception in NotEnoughPlayersView:\n{traceback_text}")
 
     async def finish(self, interaction):

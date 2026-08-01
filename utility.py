@@ -1,6 +1,9 @@
+from enum import Enum
+import io
 import logging
 import os
 import re
+import traceback
 from typing import Union, Optional
 
 import nextcord
@@ -8,13 +11,21 @@ from dotenv import load_dotenv
 from nextcord.ext import commands
 from nextcord.utils import get
 
-WorkingEmoji = '\U0001F504'
-CompletedEmoji = '\U0001F955'
-DeniedEmoji = '\U000026D4'
+WorkingEmoji = '\U0001F504'    # 🔄
+CompletedEmoji = '\U0001F955'  # 🥕
+DeniedEmoji = '\U000026D4'     # ⛔
+ConfusedEmoji = '\U0001F928'   # 🤨
+SweatSmileEmoji = '\U0001F605' # 😅
 
 MaxGameNumber = 15
 PotentialGames = [game for n in range(1, MaxGameNumber) for game in [str(n), f"b{n}", f"x{n}", f"r{n}"]]
 DeveloperIds = [962747550656528425, 966753006227955832, 224643391873482753]
+
+class DenialReason(Enum):
+    NoPermission = f"{DeniedEmoji} You do not have the permission to use this command"
+    InvalidGame = f"{ConfusedEmoji} You gave an invalid game number"
+    NoTownSquare = f"{SweatSmileEmoji} The town square for that game hasn't been set up"
+    NoNominationThread = f"{SweatSmileEmoji} The nomination thread hasn't been created yet"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
@@ -50,6 +61,14 @@ async def deny_command(ctx: commands.Context, reason: Optional[str]):
     else:
         logging.info(f"The {ctx.command.name} command was stopped against {ctx.author.name}")
 
+async def deny_app_command(interaction: nextcord.Interaction, reason: DenialReason):
+    reason_string = reason.value
+    logging.info(f"The {interaction.application_command.name} command by {interaction.user.name} was stopped. Reason: {reason}")
+    if interaction.response.is_done():
+        await interaction.followup.send(reason, ephemeral=True)
+    else:
+        await interaction.send(reason, ephemeral=True)
+
 
 async def finish_processing(ctx: commands.Context):
     for reaction in ctx.message.reactions:
@@ -68,6 +87,10 @@ async def start_processing(ctx):
 def is_mention(string: str) -> bool:
     return string.startswith("<@") and string.endswith(">") and string[2:-1].isdigit()
 
+def traceback_text(error):
+    traceback_buffer = io.StringIO()
+    traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
+    return  traceback_buffer.getvalue()
 
 class Helper:
     def __init__(self, bot: commands.Bot):

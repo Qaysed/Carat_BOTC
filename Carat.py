@@ -24,11 +24,12 @@ LogLevelMapping = {'DEBUG': logging.DEBUG,
 
 logging.basicConfig(filename=LogFile, filemode="w",
                     format="%(asctime)s - %(levelname)s: %(message)s",
-                    level=logging.INFO)
+                    level=logging.DEBUG)
 
 try:
     load_dotenv()
     token = os.environ['TOKEN']
+    guild_id = int(os.environ['GUILD_ID'])
     repository_api_url = "https://api.github.com/repos/" + os.environ['GITHUB_REPOSITORY']
     owner_id = int(os.environ['OWNER_ID'])
 except Exception as e:
@@ -50,7 +51,8 @@ bot = commands.Bot(command_prefix=">",
                    allowed_mentions=allowedMentions,
                    activity=nextcord.Game(">HelpMe or >help"),
                    help_command=help_command,
-                   owner_id=owner_id)
+                   owner_id=owner_id,
+                   default_guild_ids=[guild_id])
 
 
 # load cogs and print ready message
@@ -62,6 +64,7 @@ async def on_ready():
     print('Loading cogs')
     cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
     load_extensions(cog_paths)
+    await bot.sync_all_application_commands()
     print('Ready')
     print('------')
     logging.info("Carat online")
@@ -90,9 +93,7 @@ async def on_command_error(ctx: commands.Context, error: CommandError):
         logging.warning(
             f"{ctx.command.name} command was ignored due to the command's check failing")
     else:
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = utility.traceback_text(error)
         logging.exception(f"Ignoring exception in command {ctx.command}:\n{traceback_text}")
 
 
@@ -143,9 +144,7 @@ def get_repo_info(sub_path: str) -> Optional[List]:
                             headers={"Accept": "application/vnd.github+json",
                                      "X-GitHub-Api-Version": "2022-11-28"})
     except Exception as error:
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = utility.traceback_text(error)
         logging.exception(f"Exception during request to repository:\n{traceback_text}")
         return None
     if response.status_code != 200:
@@ -158,9 +157,7 @@ def download_file(url, local_directory, local_filename):
     try:
         response = requests.get(url)
     except Exception as error:
-        traceback_buffer = io.StringIO()
-        traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
-        traceback_text = traceback_buffer.getvalue()
+        traceback_text = utility.traceback_text(error)
         logging.exception(f"Exception during request to repository:\n{traceback_text}")
         return False
     if response.status_code != 200:
@@ -210,6 +207,7 @@ async def ReloadCogs(ctx: commands.Context):
     new_cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
     logging.info("Now loading new cogs from files: " + ", ".join(new_cog_paths))
     load_extensions(new_cog_paths)
+    await bot.sync_all_application_commands()
     logging.warning("Cogs successfully loaded. Currently loaded cogs: " + ", ".join(bot.cogs.keys()))
     await utility.dm_user(ctx.author, "Loaded new cogs: " + ", ".join([c[5:] for c in new_cog_paths]))
     await utility.finish_processing(ctx)
