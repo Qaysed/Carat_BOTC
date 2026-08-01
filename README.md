@@ -9,10 +9,12 @@ Use `>help` or `>HelpMe` for more information.
 
 
 ## Authors
-- [@Qaysed](https://github.com/Qaysed) - Major contributions throughout all of Carat
 - [@Broome](https://github.com/JackKBroome) - Initial Developer
-- [@Kanave](https://github.com/lilymnky-F) - OffServerArchive contributed
-- [@CRSnyder](https://github.com/CRSnyder) - StartWhisper Command Added
+- [@Qaysed](https://github.com/Qaysed) - Maintainer
+- [@lukeypie](https://github.com/lukeypie) - Contributor
+- [@James_Games](https://github.com/JamesGames7) - Contributor
+- [@Kanave](https://github.com/lilymnky-F) - Contributor
+- [@CRSnyder](https://github.com/CRSnyder) - Contributor
 
 
 ## Used By
