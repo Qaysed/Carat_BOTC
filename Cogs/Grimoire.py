@@ -57,7 +57,7 @@ class Grimoire(commands.Cog):
         Secondary_output_channel = self.bot.get_channel(minions_channel_id)
         await Secondary_output_channel.send(f"{interaction.user.mention} has run the ClaimGrimoire Command for game {game_number}")
 
-    @grimoire.subcommand(name="give", description="Removes the ST role from you are gives it to another member.")
+    @grimoire.subcommand(name="give", description="Removes the ST role from you and gives it to another member.")
     async def grimoire_give(self, interaction: nextcord.Interaction, 
                            game_number: str = nextcord.SlashOption(required=True, name="game_number"), 
                            member: nextcord.Member = nextcord.SlashOption(required=True, name="member")):
@@ -90,7 +90,7 @@ class Grimoire(commands.Cog):
 
         await self.helper.log(f"{interaction.user.mention} has run the DropGrimoire Command for game {game_number}")
 
-    @grimoire.subcommand(name="share", description="Gives another member the ST role without taking it away from you.")
+    @grimoire.subcommand(name="share", description="Gives another member the ST role without taking it away from you")
     async def grimoire_share(self, interaction: nextcord.Interaction, 
                              game_number: str = nextcord.SlashOption(required=True, name="game_number"), 
                              member: nextcord.Member = nextcord.SlashOption(required=True, name="member")):
