@@ -26,6 +26,8 @@ class DenialReason(Enum):
     InvalidGame = f"{ConfusedEmoji} You gave an invalid game number"
     NoTownSquare = f"{SweatSmileEmoji} The town square for that game hasn't been set up"
     NoNominationThread = f"{SweatSmileEmoji} The nomination thread hasn't been created yet"
+    NoSTRole = f"{ConfusedEmoji} There is not ST role for this game"
+    AlreadySTS = f"{SweatSmileEmoji} There is already someone with the ST role for this game"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
