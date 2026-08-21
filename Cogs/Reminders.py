@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import datetime
-import json
 import logging
-import os
 import re
-from dataclasses import dataclass
 from typing import Optional
 
-from dataclasses_json import dataclass_json
 from nextcord.ext import commands, tasks
-from nextcord.utils import utcnow, format_dt
+from nextcord.utils import utcnow
 
 import utility
+from State.reminders import Reminder, ReminderStore
 
 hours_pattern = re.compile(r"^(\d+):([0-5]\d)$")
 
@@ -25,63 +22,22 @@ def parse_hours(inp: str) -> float:
         return float(inp)
 
 
-@dataclass_json
-@dataclass(order=True)
-class Reminder:
-    time: str
-    channel: int
-    text: str
-
-    def explain(self) -> str:
-        text_elements = self.text.split(" ")
-        # remove role pings
-        text_elements = [el for el in text_elements[:2] if not el.startswith("<@&")] + text_elements[2:]
-        time = datetime.datetime.fromisoformat(self.time)
-        if self.text[-4:] == ":t>)":
-            event = " ".join(text_elements[:-2])
-            explanation = f"{format_dt(time, 'R')} ({format_dt(time, 'f')}): Reminder that `{event}` at " \
-                          f"{text_elements[-1][1:-3]}f>"
-        else:
-            event = " ".join(text_elements)
-            explanation = f"{format_dt(time, 'R')} ({format_dt(time, 'f')}): Announcement that `{event}`"
-        return explanation
-
-    @staticmethod
-    def create(time: datetime.datetime, channel: int, mention: Optional[str], event: str,
-               end_of_countdown: datetime.datetime) -> Reminder:
-        text = event if mention is None else f"{mention} {event}"
-        if time == end_of_countdown:
-            return Reminder(time.isoformat(), channel, text)
-        text += f" {format_dt(end_of_countdown, 'R')} ({format_dt(end_of_countdown, 't')})"
-        return Reminder(time.isoformat(), channel, text)
-
-
 class Reminders(commands.Cog):
     bot: commands.Bot
     helper: utility.Helper
-    reminder_list: list[Reminder]
-    ReminderStorage: str
+    store: ReminderStore
 
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, store: ReminderStore):
         self.bot = bot
         self.helper = helper
-        self.ReminderStorage = os.path.join(self.helper.StorageLocation, "reminders.json")
-        self.reminder_list = []
-        if not os.path.exists(self.ReminderStorage):
-            with open(self.ReminderStorage, 'w') as f:
-                json.dump(self.reminder_list, f, indent=2)
-        else:
-            with open(self.ReminderStorage, 'r') as f:
-                self.reminder_list = [Reminder.from_dict(item) for item in json.load(f)]
-            self.reminder_list.sort()
+        self.store = store
         self.check_reminders.start()
 
     def cog_unload(self):
         self.check_reminders.cancel()
 
     def update_storage(self):
-        with open(self.ReminderStorage, 'w') as f:
-            json.dump([item.to_dict() for item in self.reminder_list], f, indent=2)
+        self.store.save()
 
     @commands.command(usage="<game_number> [event] [times]... <'ping-st'> <'no-player-ping'>")
     async def SetReminders(self, ctx, *args):
@@ -130,10 +86,10 @@ class Reminders(commands.Cog):
             for time in times:
                 reminder = Reminder.create(utcnow() + datetime.timedelta(hours=time), game_channel.id, mention, event,
                                            end_of_countdown)
-                self.reminder_list.append(reminder)
+                self.store.reminders.append(reminder)
                 logging.debug(f"Added reminder in game {game_number}: {reminder}")
-            self.reminder_list.sort()
-            self.update_storage()
+            self.store.reminders.sort()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You must be an ST to use this command")
@@ -144,8 +100,8 @@ class Reminders(commands.Cog):
         game_channel_id = self.helper.get_game_channel(game_number).id
         if self.helper.authorize_st_command(ctx.author, game_number):
             await utility.start_processing(ctx)
-            self.reminder_list = [reminder for reminder in self.reminder_list if reminder.channel != game_channel_id]
-            self.update_storage()
+            self.store.reminders = [reminder for reminder in self.store.reminders if reminder.channel != game_channel_id]
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You must be an ST to use this command")
@@ -155,7 +111,7 @@ class Reminders(commands.Cog):
         """Shows all reminders for the given game number."""
         game_channel_id = self.helper.get_game_channel(game_number).id
         await utility.start_processing(ctx)
-        reminders = [reminder for reminder in self.reminder_list if reminder.channel == game_channel_id]
+        reminders = [reminder for reminder in self.store.reminders if reminder.channel == game_channel_id]
         if len(reminders) == 0:
             await utility.dm_user(ctx.author, "There are no reminders for this game")
         else:
@@ -164,19 +120,19 @@ class Reminders(commands.Cog):
 
     @tasks.loop(seconds=15)
     async def check_reminders(self):
-        if len(self.reminder_list) == 0:
+        if len(self.store.reminders) == 0:
             return
-        earliest_reminder = self.reminder_list[0]
+        earliest_reminder = self.store.reminders[0]
         if datetime.datetime.fromisoformat(earliest_reminder.time) <= utcnow():
             try:
                 channel = self.bot.get_channel(earliest_reminder.channel)
                 await channel.send(earliest_reminder.text)
-                self.reminder_list.pop(0)
-                self.update_storage()
+                self.store.reminders.pop(0)
+                self.store.save()
             except Exception as e:
                 logging.warning(f"Failed to send reminder: {e}")
 
 
 
 def setup(bot: commands.Bot):
-    bot.add_cog(Reminders(bot, utility.Helper(bot)))
+    bot.add_cog(Reminders(bot, utility.Helper(bot), bot.data.reminders))

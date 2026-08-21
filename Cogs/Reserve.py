@@ -2,37 +2,22 @@ import datetime
 import io
 import json
 import logging
-import os
 import traceback
-from dataclasses import dataclass, field
 from datetime import date, timedelta, time
 from typing import Optional, Dict, List
 
 import nextcord
-from dataclasses_json import dataclass_json
 from nextcord.ext import commands, tasks
 from nextcord.utils import get, utcnow, format_dt
 
 import utility
-from Cogs.TextQueue import TextQueue, Entry, ExplainInvalidChannelType
+from State.queue import Entry, ExplainInvalidChannelType, QueueStore
+from State.reserve import RSVPEntry, ReserveStore
 
 green_square_emoji = '\U0001F7E9'
 red_square_emoji = '\U0001F7E5'
 refresh_emoji = '\U0001F504'
 min_advance_days = 14
-
-
-@dataclass_json
-@dataclass
-class RSVPEntry:
-    thread: int
-    owner: int
-    date: str
-    min_players: int
-    max_players: int = 0
-    script: str = "TBA"
-    co_sts: List[int] = field(default_factory=list)
-    players: List[int] = field(default_factory=list)
 
 
 def default_game_channel_overwrites(game_role: nextcord.Role, st_role: nextcord.Role, helper: utility.Helper) \
@@ -197,17 +182,13 @@ async def create_channel(owner: int, helper: utility.Helper,
     logging.info(f"Setup for game {game_number} complete")
 
 
-async def switch_to_queue(queue_cog: TextQueue, helper: utility.Helper, entry: RSVPEntry, channel_type: str,
+async def switch_to_queue(queue_store: QueueStore, helper: utility.Helper, entry: RSVPEntry, channel_type: str,
                           availability="At next opportunity"):
     thread = get(helper.ReservingForum.threads, id=entry.thread)
     queue_entry = Entry(entry.owner, entry.script, availability,
                         f"See {thread.mention}")
-    queue_cog.queues[channel_type].entries.append(queue_entry)
-    full_queue_posted = await queue_cog.update_queue_message(queue_cog.queues[channel_type])
-    if not full_queue_posted:
-        await queue_cog.helper.log("Queue too long for message - final entry/entries not displayed")
-    queue_cog.update_storage()
-    pass
+    queue_store.queues[channel_type].entries.append(queue_entry)
+    queue_store.save()
 
 
 def signup_embed(entry: RSVPEntry, helper: utility.Helper) -> nextcord.Embed:
@@ -237,48 +218,31 @@ def signup_embed(entry: RSVPEntry, helper: utility.Helper) -> nextcord.Embed:
 class Reserve(commands.Cog):
     bot: commands.Bot
     helper: utility.Helper
-    entries: Dict[int, RSVPEntry]
-    announced: Dict[int, RSVPEntry]
-    ReservedStorage: str
+    store: ReserveStore
 
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, store: ReserveStore, queue_store: QueueStore):
         self.bot = bot
         self.helper = helper
         self.bot.add_view(PreSignupView(self, helper, RSVPEntry(0, 0, "", 0)))  # registering views for persistence
-        self.ReservedStorage = os.path.join(self.helper.StorageLocation, "reserved.json")
-        self.entries = {}
-        self.announced = {}
-        if not os.path.exists(self.ReservedStorage):
-            with open(self.ReservedStorage, 'w') as f:
-                json.dump({"entries": self.entries, "announced": self.announced}, f, indent=2)
-        else:
-            with open(self.ReservedStorage, 'r') as f:
-                json_data = json.load(f)
-                for owner in json_data["entries"]:
-                    self.entries[int(owner)] = RSVPEntry.from_dict(json_data["entries"][owner])
-                for owner in json_data["announced"]:
-                    self.announced[int(owner)] = RSVPEntry.from_dict(json_data["announced"][owner])
+        self.store = store
+        self.queue_store = queue_store
+        self.entries = self.store.entries
+        self.announced = self.store.announced
         self.check_entries.start()
 
     def cog_unload(self) -> None:
         self.check_entries.cancel()
 
     def update_storage(self):
-        json_data = {"entries": {}, "announced": {}}
-        for owner in self.entries:
-            json_data["entries"][owner] = self.entries[owner].to_dict()
-        for owner in self.announced:
-            json_data["announced"][owner] = self.announced[owner].to_dict()
-        with open(self.ReservedStorage, "w") as f:
-            json.dump(json_data, f, indent=2)
+        self.store.save()
 
     def remove_entry(self, owner: int):
         self.entries.pop(owner)
-        self.update_storage()
+        self.store.save()
 
     def remove_announced(self, owner: int):
         self.announced.pop(owner)
-        self.update_storage()
+        self.store.save()
 
     @commands.command()
     async def ReserveGame(self, ctx: commands.Context, min_players: int, start: Optional[str]):
@@ -290,8 +254,7 @@ class Reserve(commands.Cog):
         if any(entry_owner == ctx.author.id for entry_owner in self.entries):
             await utility.deny_command(ctx, "You already have reserved a game")
             return
-        queue_cog: Optional[TextQueue] = self.bot.get_cog("TextQueue")
-        if queue_cog is not None and queue_cog.get_queue(ctx.author.id) is not None:
+        if self.queue_store.get_queue(ctx.author.id) is not None:
             await utility.deny_command(ctx, "You are already in the queue")
             return
         if start is None:
@@ -309,7 +272,7 @@ class Reserve(commands.Cog):
                 and ctx.author == ctx.channel.owner:
             await utility.start_processing(ctx)
             self.entries[ctx.author.id] = RSVPEntry(ctx.channel.id, ctx.author.id, start_date.isoformat(), min_players)
-            self.update_storage()
+            self.store.save()
             await utility.dm_user(ctx.author, f"Registered your entry for {start_date.isoformat()}")
             await utility.finish_processing(ctx)
         else:
@@ -327,7 +290,7 @@ class Reserve(commands.Cog):
             entry = self.entries[ctx.author.id]
             entry.max_players = max_players
             entry.script = script
-            self.update_storage()
+            self.store.save()
             embed = signup_embed(entry, self.helper)
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(embed=embed, view=PreSignupView(self, self.helper, entry))
@@ -342,7 +305,7 @@ class Reserve(commands.Cog):
             await utility.start_processing(ctx)
             entry = self.entries[ctx.author.id]
             entry.co_sts.append(co_st.id)
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
 
     @commands.command()
@@ -360,11 +323,7 @@ class Reserve(commands.Cog):
             entry = self.entries[ctx.author.id]
             if availability is None:
                 availability = f"Starting {entry.date}"
-            queue_cog: Optional[TextQueue] = self.bot.get_cog("TextQueue")
-            if queue_cog is None:
-                await utility.deny_command(ctx, "Could not access queue")
-                return
-            await switch_to_queue(queue_cog, self.helper, entry, channel_type, availability)
+            await switch_to_queue(self.queue_store, self.helper, entry, channel_type, availability)
             self.remove_entry(ctx.author.id)
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(f"The game has been moved to the {channel_type} queue")
@@ -461,7 +420,7 @@ class Reserve(commands.Cog):
             if st.id in self.entries:
                 entry = self.entries[st.id]
                 entry.date = start_day.isoformat()
-                self.update_storage()
+                self.store.save()
             elif st.id in self.announced:
                 if start_day > date.today():
                     entry = self.announced[st.id]
@@ -488,7 +447,7 @@ class Reserve(commands.Cog):
             if st.id in self.entries:
                 entry = self.entries[st.id]
                 entry.min_players = new_min
-                self.update_storage()
+                self.store.save()
             elif st.id in self.announced:
                 entry = self.announced[st.id]
                 if new_min > len(entry.players) >= entry.min_players \
@@ -513,7 +472,7 @@ class Reserve(commands.Cog):
     async def check_entries(self):
         to_announce = [entry for entry in self.entries.values() if date.fromisoformat(entry.date) <= date.today()]
         if len(to_announce) > 0:
-            queue_cog: Optional[TextQueue] = self.bot.get_cog("TextQueue")
+            queue_cog = self.queue_store
         for entry in to_announce:
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             owner = get(self.helper.Guild.members, id=entry.owner)
@@ -571,7 +530,7 @@ class PreSignupView(nextcord.ui.View):
             await utility.dm_user(interaction.user, "The game is currently full, please contact the Storyteller")
         else:
             self.entry.players.append(interaction.user.id)
-            self.cog.update_storage()
+            self.cog.store.save()
             await interaction.message.edit(embed=signup_embed(self.entry, self.helper), view=self)
             owner = get(self.helper.Guild.members, id=self.entry.owner)
             await utility.dm_user(owner, f"{interaction.user.display_name} ({interaction.user.name}) has signed up for "
@@ -586,7 +545,7 @@ class PreSignupView(nextcord.ui.View):
             await utility.dm_user(interaction.user, "You are not signed up")
         else:
             self.entry.players.remove(interaction.user.id)
-            self.cog.update_storage()
+            self.cog.store.save()
             await interaction.message.edit(embed=signup_embed(self.entry, self.helper), view=self)
             owner = get(self.helper.Guild.members, id=self.entry.owner)
             await utility.dm_user(owner, f"{interaction.user.display_name} ({interaction.user.name}) has left your "
@@ -605,7 +564,7 @@ class EnoughPlayersView(nextcord.ui.View):
                f"This will time out {format_dt(timeout, 'R')} ({format_dt(timeout, 'f')})"
 
     def __init__(self, cog: Reserve, helper: utility.Helper, entry: RSVPEntry,
-                 queue_cog: Optional[TextQueue]):
+                 queue_cog: QueueStore):
         super().__init__()
         self.cog = cog
         self.helper = helper
@@ -627,10 +586,6 @@ class EnoughPlayersView(nextcord.ui.View):
 
     @nextcord.ui.button(label="Switch to queue", custom_id="switch_to_queue", style=nextcord.ButtonStyle.blurple, row=1)
     async def switch_to_queue_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        if self.queue_cog is None:
-            await interaction.send(content="Error: Queue not available")
-            logging.error(f"Queue not available for switching in RSVP thread {self.entry.thread}")
-            return
         queue_buttons = [b for b in self.children
                          if isinstance(b, nextcord.ui.Button) and b.custom_id.startswith("select")]
         for b in queue_buttons:
@@ -706,7 +661,7 @@ class NotEnoughPlayersView(nextcord.ui.View):
                f"Alternatively, you can reuse this thread to >ReserveGame again for another date."
 
     def __init__(self, cog: Reserve, helper: utility.Helper, entry: RSVPEntry,
-                 queue_cog: Optional[TextQueue]):
+                 queue_cog: QueueStore):
         super().__init__()
         self.cog = cog
         self.helper = helper
@@ -766,4 +721,4 @@ class NotEnoughPlayersView(nextcord.ui.View):
 
 
 def setup(bot: commands.Bot):
-    bot.add_cog(Reserve(bot, utility.Helper(bot)))
+    bot.add_cog(Reserve(bot, utility.Helper(bot), bot.data.reserve, bot.data.queue))

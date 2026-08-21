@@ -12,6 +12,7 @@ from nextcord.ext import commands
 from nextcord.ext.commands import DefaultHelpCommand, CommandError
 
 import utility
+from State import DataLayer
 
 LogFile = "Carat.log"
 repository_api_url = "https://api.github.com/repos/Qaysed/Carat_BOTC"
@@ -62,6 +63,8 @@ async def on_ready():
     print(bot.user.name)
     print(bot.user.id)
     print('Loading cogs')
+    if not hasattr(bot, "data"):
+        bot.data = DataLayer(utility.Helper(bot).StorageLocation)
     cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
     load_extensions(cog_paths)
     await bot.sync_all_application_commands()
@@ -204,6 +207,17 @@ async def ReloadCogs(ctx: commands.Context):
                 await utility.dm_user(ctx.author, "Loaded cogs from currently existing files")
                 logging.warning("Ending the process. Currently loaded cogs: " + ", ".join(bot.cogs.keys()))
                 return
+    # TODO: better logic
+    logging.info("Downloading data-layer modules from repository")
+    data_contents = get_repo_info("/State")
+    if data_contents is None:
+        await utility.deny_command(ctx, "Could not download the data layer; reloading existing files")
+    else:
+        os.makedirs("State", exist_ok=True)
+        for file in data_contents:
+            if file["name"].endswith(".py") and not download_file(file["download_url"], "State", file["name"]):
+                await utility.deny_command(ctx, "Could not download the data layer; reloading existing files")
+                break
     new_cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
     logging.info("Now loading new cogs from files: " + ", ".join(new_cog_paths))
     load_extensions(new_cog_paths)

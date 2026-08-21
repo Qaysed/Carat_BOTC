@@ -4,13 +4,14 @@ from typing import Optional
 from nextcord.ext import commands
 
 import utility
-from Cogs.Townsquare import Townsquare
+from State.townsquare import TownSquareStore
 
 
 class Game(commands.Cog):
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, townsquares: TownSquareStore):
         self.bot = bot
         self.helper = helper
+        self.townsquares = townsquares
 
     @commands.command()
     async def OpenKibitz(self, ctx, game_number):
@@ -90,10 +91,9 @@ class Game(commands.Cog):
                     await member.remove_roles(kibitz_role)
                     await member.remove_roles(game_role)
 
-            townsquare: Optional[Townsquare] = self.bot.get_cog("Townsquare")
-            if townsquare and game_number in townsquare.town_squares:
-                townsquare.town_squares.pop(game_number)
-                townsquare.update_storage()
+            if game_number in self.townsquares.town_squares:
+                self.townsquares.town_squares.pop(game_number)
+                self.townsquares.save()
 
             # Change permission of Kibitz to allow Townsfolk to view
             townsfolk_role = self.helper.Guild.default_role
@@ -165,4 +165,4 @@ class Game(commands.Cog):
 
 
 def setup(bot):
-    bot.add_cog(Game(bot, utility.Helper(bot)))
+    bot.add_cog(Game(bot, utility.Helper(bot), bot.data.townsquare))

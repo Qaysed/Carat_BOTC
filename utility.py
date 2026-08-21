@@ -4,12 +4,14 @@ import logging
 import os
 import re
 import traceback
-from typing import Union, Optional
+from typing import TypeVar, Union, Optional
 
 import nextcord
 from dotenv import load_dotenv
 from nextcord.ext import commands
 from nextcord.utils import get
+
+T = TypeVar("T")
 
 WorkingEmoji = '\U0001F504'    # 🔄
 CompletedEmoji = '\U0001F955'  # 🥕
@@ -22,17 +24,18 @@ PotentialGames = [game for n in range(1, MaxGameNumber) for game in [str(n), f"b
 DeveloperIds = [962747550656528425, 966753006227955832, 224643391873482753]
 
 class DenialReason(Enum):
+    MemberCommand = f"{DeniedEmoji} This command must be used as a server member, i.e. not via DMs."
     NoPermission = f"{DeniedEmoji} You do not have the permission to use this command"
     InvalidGame = f"{ConfusedEmoji} You gave an invalid game number"
     NoTownSquare = f"{SweatSmileEmoji} The town square for that game hasn't been set up"
     NoNominationThread = f"{SweatSmileEmoji} The nomination thread hasn't been created yet"
-    NoSTRole = f"{ConfusedEmoji} There is not ST role for this game"
+    NoSTRole = f"{ConfusedEmoji} There is no ST role for this game"
     AlreadySTS = f"{SweatSmileEmoji} There is already someone with the ST role for this game"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
 
-def get_channel_type(channel_type: str):
+def get_channel_type(channel_type: str) -> Optional[str]:
     if channel_type.lower() in ['base', 'b3', 'b']:
         return "Base"
     elif channel_type.lower() in ['experimental', 'exp', 'x']:
@@ -64,12 +67,16 @@ async def deny_command(ctx: commands.Context, reason: Optional[str]):
         logging.info(f"The {ctx.command.name} command was stopped against {ctx.author.name}")
 
 async def deny_app_command(interaction: nextcord.Interaction, reason: DenialReason):
-    reason_string = reason.value
-    logging.info(f"The {interaction.application_command.name} command by {interaction.user.name} was stopped. Reason: {reason}")
+    if interaction.application_command is None:
+        raise ValueError("interaction.application_command is None")
+    if interaction.user is None:
+        raise ValueError("interaction.user is None")
+    reason_str = reason.value
+    logging.info(f"The {interaction.application_command.name} command by {interaction.user.name} was stopped. Reason: {reason_str}")
     if interaction.response.is_done():
-        await interaction.followup.send(reason, ephemeral=True)
+        await interaction.followup.send(reason_str, ephemeral=True)
     else:
-        await interaction.send(reason, ephemeral=True)
+        await interaction.send(reason_str, ephemeral=True)
 
 
 async def finish_processing(ctx: commands.Context):
@@ -94,22 +101,25 @@ def traceback_text(error):
     traceback.print_exception(type(error), error, error.__traceback__, file=traceback_buffer)
     return  traceback_buffer.getvalue()
 
+def require(value: T | None, name: str) -> T:
+    if value is None:
+        raise EnvironmentError(f"Failed to find required Discord entity: {name}")
+    return value
+
 class Helper:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         load_dotenv()
-        self.Guild = get(bot.guilds, id=int(os.environ['GUILD_ID']))
-        self.TextGamesCategory = get(self.Guild.categories, id=int(os.environ['TEXT_GAMES_CATEGORY_ID']))
-        self.ReservingForum = get(self.Guild.channels, id=int(os.environ['RESERVING_FORUM_CHANNEL']))
-        self.ArchiveCategory = get(self.Guild.categories, id=int(os.environ['ARCHIVE_CATEGORY_ID']))
-        self.ModRole = get(self.Guild.roles, id=int(os.environ['DOOMSAYER_ROLE_ID']))
-        self.LogChannel = get(self.Guild.channels, id=int(os.environ['LOG_CHANNEL_ID']))
+        self.Guild = require(get(bot.guilds, id=int(os.environ['GUILD_ID'])), "Guild")
+        self.TextGamesCategory = require(get(self.Guild.categories, id=int(os.environ['TEXT_GAMES_CATEGORY_ID'])), "TextGamesCategory")
+        self.ReservingForum = require(get(self.Guild.channels, id=int(os.environ['RESERVING_FORUM_CHANNEL'])), "ReservingForum")
+        self.ArchiveCategory = require(get(self.Guild.categories, id=int(os.environ['ARCHIVE_CATEGORY_ID'])), "ArchiveCategory")
+        self.ModRole = require(get(self.Guild.roles, id=int(os.environ['DOOMSAYER_ROLE_ID'])), "ModRole")
+        self.LogChannel = require(get(self.Guild.channels, id=int(os.environ['LOG_CHANNEL_ID'])), "LogChannel")
+        if not isinstance(self.LogChannel, nextcord.abc.Messageable):
+            raise EnvironmentError("Log channel must be messageable")
         self.StorageLocation = os.environ['STORAGE_LOCATION']
         self.OwnerId = int(os.environ['OWNER_ID'])
-        if None in [self.Guild, self.TextGamesCategory, self. ReservingForum, self.ArchiveCategory, self.ModRole,
-                    self.LogChannel]:
-            logging.error("Failed to find required discord entity. Check .env file is correct and Guild is set up")
-            raise EnvironmentError
 
     def get_game_channel(self, number: str) -> Optional[nextcord.TextChannel]:
         if number.isdigit():  # no letters in the number
@@ -146,6 +156,9 @@ class Helper:
             # b-games also follow this format
             name = "kibitz-game-" + number
         channel = get(self.Guild.channels, name=name)
+        if not isinstance(channel, nextcord.TextChannel):
+            logging.warning(f"Kibitz channel is unexpected type - verify the guild is set up correctly")
+            return None
         if channel is None:
             logging.warning(f"Could not find kibitz channel for game {number}")
         return channel

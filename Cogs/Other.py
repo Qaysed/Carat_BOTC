@@ -5,14 +5,15 @@ import nextcord
 from nextcord.ext import commands
 
 import utility
-from Cogs.Townsquare import Townsquare
+from State.townsquare import TownSquareStore
 
 
 class Other(commands.Cog):
 
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, townsquares: TownSquareStore):
         self.bot = bot
         self.helper = helper
+        self.townsquares = townsquares
 
     @commands.command(aliases=("sw",))
     async def StartWhisper(self, ctx, title: str, players: commands.Greedy[nextcord.Member]):
@@ -48,9 +49,8 @@ class Other(commands.Cog):
         """
         if self.helper.authorize_st_command(ctx.author, game_number):
             await utility.start_processing(ctx)
-            townsquare_cog: typing.Optional[Townsquare] = self.bot.get_cog("Townsquare")
-            if townsquare_cog is not None and game_number in townsquare_cog.town_squares:
-                townsquare = townsquare_cog.town_squares[game_number]
+            if game_number in self.townsquares.town_squares:
+                townsquare = self.townsquares.town_squares[game_number]
             else:
                 townsquare = None
             for player in self.helper.get_game_role(game_number).members:
@@ -505,4 +505,4 @@ class Other(commands.Cog):
 
 
 def setup(bot: commands.Bot):
-    bot.add_cog(Other(bot, utility.Helper(bot)))
+    bot.add_cog(Other(bot, utility.Helper(bot), bot.data.townsquare))

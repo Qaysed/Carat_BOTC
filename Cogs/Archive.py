@@ -1,29 +1,15 @@
-import json
-import os.path
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 from typing import List, Dict
 
 import nextcord
-from dataclasses_json import dataclass_json
 from nextcord import InvalidArgument, HTTPException, Message
 from nextcord.ext import tasks, commands
 from nextcord.utils import get
 
 import utility
+from State.archive import ArchiveStore, ThreadList
 
 ivy_id = 183474450237358081
-
-@dataclass_json
-@dataclass
-class ThreadList:
-    private_to_archive: List[int] = field(default_factory=list)
-    public_to_not_archive: List[int] = field(default_factory=list)
-
-class Game(commands.Cog):
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
-        self.bot = bot
-        self.helper = helper
 
 async def copy_history(target: nextcord.abc.Messageable, history: AsyncIterator[Message]) -> int:
     errors = 0
@@ -61,29 +47,13 @@ async def copy_history(target: nextcord.abc.Messageable, history: AsyncIterator[
 class Archive(commands.Cog):
     bot: commands.Bot
     helper: utility.Helper
-    ThreadArchivalStorage: str
-    threads_by_channel: Dict[int, ThreadList]
+    store: ArchiveStore
 
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, store: ArchiveStore):
         self.bot = bot
         self.helper = helper
-        self.ThreadArchivalStorage = os.path.join(self.helper.StorageLocation, "thread_archival.json")
-        self.threads_by_channel = {}
-        if not os.path.exists(self.ThreadArchivalStorage):
-            with open(self.ThreadArchivalStorage, 'w') as f:
-                json.dump(self.threads_by_channel, f, indent=2)
-        else:
-            with open(self.ThreadArchivalStorage, 'r') as f:
-                json_data = json.load(f)
-            for channel in json_data:
-                self.threads_by_channel[channel] = ThreadList.from_dict(json_data[channel])
-
-    def update_storage(self):
-        json_data = {}
-        for channel in self.threads_by_channel:
-            json_data[channel] = self.threads_by_channel[channel].to_dict()
-        with open(self.ThreadArchivalStorage, 'w') as f:
-            json.dump(json_data, f, indent=2)
+        self.store = store
+        self.threads_by_channel = self.store.threads_by_channel
 
     @commands.command()
     async def IncludeInArchive(self, ctx: commands.Context):
@@ -101,7 +71,7 @@ class Archive(commands.Cog):
                 await utility.dm_user(ctx.author, "This thread is already included in the archive.")
             await utility.finish_processing(ctx)
             await self.helper.log(f"{ctx.author.display_name} has run the IncludeInArchive Command")
-            self.update_storage()
+            self.store.save()
         elif thread.type == nextcord.ChannelType.public_thread:
             await utility.start_processing(ctx)
             if thread.parent.id not in self.threads_by_channel:
@@ -112,7 +82,7 @@ class Archive(commands.Cog):
                 await utility.dm_user(ctx.author, "This thread is already included in the archive.")
             await utility.finish_processing(ctx)
             await self.helper.log(f"{ctx.author.display_name} has run the IncludeInArchive Command")
-            self.update_storage()
+            self.store.save()
         else:
             await utility.deny_command(ctx, "This command can only be used in a thread.")
 
@@ -132,7 +102,7 @@ class Archive(commands.Cog):
                 await utility.dm_user(ctx.author, "This thread is already not included in the archive.")
             await utility.finish_processing(ctx)
             await self.helper.log(f"{ctx.author.display_name} has run the ExcludeFromArchive Command")
-            self.update_storage()
+            self.store.save()
         elif thread.type == nextcord.ChannelType.public_thread:
             await utility.start_processing(ctx)
             if thread.parent.id not in self.threads_by_channel:
@@ -143,7 +113,7 @@ class Archive(commands.Cog):
                 await utility.dm_user(ctx.author, "This thread is already not included in the archive.")
             await utility.finish_processing(ctx)
             await self.helper.log(f"{ctx.author.display_name} has run the ExcludeFromArchive Command")
-            self.update_storage()
+            self.store.save()
         else:
             await utility.deny_command(ctx, "This command can only be used in a thread.")
 
@@ -233,7 +203,7 @@ class Archive(commands.Cog):
 
             await utility.finish_processing(ctx)
             self.threads_by_channel.pop(channel_to_archive.id, None)
-            self.update_storage()
+            self.store.save()
 
             await self.helper.log(f"{ctx.author.display_name} has run the OffServerArchive Command")
             message = f"Your Archive for {ctx.message.channel.name} is done."
@@ -266,4 +236,4 @@ class Archive(commands.Cog):
                         print(f"Failed to update thread: {thread.name} in channel: {channel.name}. Error: {e}")
 
 def setup(bot: commands.Bot):
-    bot.add_cog(Archive(bot, utility.Helper(bot)))
+    bot.add_cog(Archive(bot, utility.Helper(bot), bot.data.archive))

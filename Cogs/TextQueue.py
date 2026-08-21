@@ -1,101 +1,73 @@
 import io
 import json
 import logging
-import os
-import traceback
-from dataclasses import dataclass, field
-from typing import Literal, Optional, List, Dict
+from typing import Literal, Optional
 
 import nextcord
-from dataclasses_json import dataclass_json
 from nextcord import HTTPException
 from nextcord.ext import commands
 from nextcord.utils import get
 
 import utility
-ExplainInvalidChannelType = "Not a valid channel type - accepted forms are `base, b3, b` for base, " \
-                            "`regular, standard, normal, reg, r, s, n` for regular, " \
-                            "`experimental, exp, x` for experimental - capitalization doesn't matter."
+from State.queue import Entry, ExplainInvalidChannelType, QueueStore, StQueue
+from State.reserve import ReserveStore
 
-
-@dataclass_json
-@dataclass
-class Entry:
-    st: int
-    script: str
-    availability: str
-    notes: Optional[str] = None
-
-
-@dataclass_json
-@dataclass
-class StQueue:
-    channel_id: int
-    message_id: int
-    thread_id: Optional[int] = None
-    entries: List[Entry] = field(default_factory=list)
-
+async def update_queue_message(queue: StQueue, helper: utility.Helper) -> bool:
+    channel = get(helper.Guild.channels, id=queue.channel_id)
+    if channel is None:
+        raise ValueError("Could not find the queue channel/the channel containing the queue threads")
+    if queue.thread_id is not None:
+        thread = get(channel.threads, id=queue.thread_id)
+        if thread is None:
+            raise ValueError("Could not find queue thread")
+        message = await thread.fetch_message(queue.message_id)
+    else:
+        message = await channel.fetch_message(queue.message_id)
+    embed = message.embeds[0]
+    embed.clear_fields()
+    spot = 1
+    for entry in queue.entries:
+        user = get(helper.Guild.members, id=entry.st)
+        if user is None:
+            queue.entries.remove(entry)
+            log_message = f"Removed user with ID {entry.st} from queue due to having left the guild"
+            logging.warning(log_message)
+            await helper.log(log_message)
+            continue
+        entry_string = f"Script: {entry.script}\nAvailability: {entry.availability}\n"
+        if entry.notes is not None:
+            entry_string += f"Notes: {entry.notes}\n"
+        embed.add_field(name=f"{spot}. {user.display_name}"[:256],
+                        value=entry_string[:1024],
+                        inline=False)  # length limits by discord
+        spot = spot + 1
+    await helper.log(
+        f"Queue updated - current entries: "
+        f"{str([get(helper.Guild.members, id=qe.st).display_name for qe in queue.entries])}"[:1950])
+    queue_posted_completely = True
+    success = False
+    while not success:
+        try:
+            await message.edit(embed=embed)
+            success = True
+        except HTTPException:
+            if len(embed.fields) == 0:
+                raise Exception("Unable to post queue")
+            embed.remove_field(len(embed.fields) - 1)
+            queue_posted_completely = False
+    return queue_posted_completely
 
 class TextQueue(commands.Cog):
     bot: commands.Bot
     helper: utility.Helper
-    queues: Dict[str, StQueue]
-    QueueStorage: str
+    store: QueueStore
 
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, store: QueueStore, reserve_store: ReserveStore):
         self.bot = bot
         self.helper = helper
-        self.QueueStorage = os.path.join(self.helper.StorageLocation, "queue.json")
-        self.queues = {}
-        if not os.path.exists(self.QueueStorage):
-            with open(self.QueueStorage, 'w') as f:
-                json.dump(self.queues, f, indent=2)
-        else:
-            with open(self.QueueStorage, 'r') as f:
-                json_data = json.load(f)
-                for queue in json_data:
-                    self.queues[queue] = StQueue.from_dict(json_data[queue])
-
-    async def update_queue_message(self, queue: StQueue) -> bool:
-        channel = get(self.helper.Guild.channels, id=queue.channel_id)
-        if queue.thread_id is not None:
-            thread = get(channel.threads, id=queue.thread_id)
-            message = await thread.fetch_message(queue.message_id)
-        else:
-            message = await channel.fetch_message(queue.message_id)
-        embed = message.embeds[0]
-        embed.clear_fields()
-        spot = 1
-        for entry in queue.entries:
-            user = get(self.helper.Guild.members, id=entry.st)
-            if user is None:
-                queue.entries.remove(entry)
-                message = f"Removed user with ID {entry.st} from queue due to having left the guild"
-                logging.warning(message)
-                await self.helper.log(message)
-                continue
-            entry_string = f"Script: {entry.script}\nAvailability: {entry.availability}\n"
-            if entry.notes is not None:
-                entry_string += f"Notes: {entry.notes}\n"
-            embed.add_field(name=f"{spot}. {user.display_name}"[:256],
-                            value=entry_string[:1024],
-                            inline=False)  # length limits by discord
-            spot = spot + 1
-        await self.helper.log(
-            f"Queue updated - current entries: "
-            f"{str([get(self.helper.Guild.members, id=qe.st).display_name for qe in queue.entries])}"[:1950])
-        queue_posted_completely = True
-        success = False
-        while not success:
-            try:
-                await message.edit(embed=embed)
-                success = True
-            except HTTPException:
-                if len(embed.fields) == 0:
-                    raise Exception("Unable to post queue")
-                embed.remove_field(len(embed.fields) - 1)
-                queue_posted_completely = False
-        return queue_posted_completely
+        self.store = store
+        self.reserve_store = reserve_store
+        self.queues = self.store.queues
 
     async def announce_free_channel(self, game_number, queue_position: int):
         channel = self.helper.get_game_channel(game_number)
@@ -122,26 +94,11 @@ class TextQueue(commands.Cog):
             await self.announce_free_channel(game_number, queue_position + 1)
 
     async def user_leave_queue(self, user: nextcord.Member):
-        for channel_type in self.queues:
-            prev_len = len(self.queues[channel_type].entries)
-            self.queues[channel_type].entries = [entry for entry in self.queues[channel_type].entries
-                                                 if entry.st != user.id]
-            if len(self.queues[channel_type].entries) < prev_len:
-                await self.update_queue_message(self.queues[channel_type])
-        self.update_storage()
-
-    def update_storage(self):
-        json_data = {}
-        for queue in self.queues:
-            json_data[queue] = self.queues[queue].to_dict()
-        with open(self.QueueStorage, "w") as f:
-            json.dump(json_data, f, indent=2)
+        for queue in self.store.remove_user(user.id):
+            await update_queue_message(queue, self.helper)
 
     def get_queue(self, user_id: int) -> Optional[StQueue]:
-        for channel_type in self.queues:
-            if user_id in [entry.st for entry in self.queues[channel_type].entries]:
-                return self.queues[channel_type]
-        return None
+        return self.store.get_queue(user_id)
 
     @commands.command()
     async def InitQueue(self, ctx: commands.Context, channel_type: str,
@@ -149,12 +106,13 @@ class TextQueue(commands.Cog):
         """Initializes an ST queue for base, regular or experimental games in the channel or thread the command was used in.
         Can be reused to create a new queue message for either channel type.
         If existing entries should be deleted, add "reset" at the end."""
-        channel_type = utility.get_channel_type(channel_type)
-        if channel_type is None:
+        parsed_channel_type = utility.get_channel_type(channel_type)
+        if parsed_channel_type is None:
             await utility.deny_command(ctx, ExplainInvalidChannelType)
+            return
         if self.helper.authorize_mod_command(ctx.author):
             await utility.start_processing(ctx)
-            embed = nextcord.Embed(title=channel_type + " storytelling queue", description="Use >JoinTextQueue to join")
+            embed = nextcord.Embed(title=parsed_channel_type + " storytelling queue", description="Use >JoinTextQueue to join")
             if isinstance(ctx.channel, nextcord.Thread):
                 queue = StQueue(ctx.channel.parent.id, -1, ctx.channel.id)
             elif isinstance(ctx.channel, nextcord.TextChannel):
@@ -162,14 +120,14 @@ class TextQueue(commands.Cog):
             else:
                 await utility.dm_user(ctx.author, 'Please place the queue in a text channel or thread')
                 return
-            if channel_type in self.queues and reset is None:
-                queue.entries = self.queues[channel_type].entries
+            if parsed_channel_type in self.queues and reset is None:
+                queue.entries = self.queues[parsed_channel_type].entries
 
             queue_message = await ctx.send(embed=embed)
             queue.message_id = queue_message.id
-            self.queues[channel_type] = queue
+            self.queues[parsed_channel_type] = queue
 
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "This command is restricted to moderators")
@@ -187,8 +145,7 @@ class TextQueue(commands.Cog):
         if channel_type is None:
             await utility.deny_command(ctx, ExplainInvalidChannelType)
             return
-        reserve_cog = self.bot.get_cog("Reserve")
-        if reserve_cog is not None and ctx.author.id in reserve_cog.entries:
+        if ctx.author.id in self.reserve_store.entries:
             await utility.deny_command(ctx, "You can't join a queue while you have reserved a game")
             return
         if self.get_queue(ctx.author.id) is None:
@@ -203,7 +160,7 @@ class TextQueue(commands.Cog):
                 await utility.dm_user(ctx.author, "The queue is too long to display in full. Your entry may not be "
                                                   "displayed currently, but it has been added to the queue.")
 
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You may not join a text ST queue while you are already in one")
@@ -226,7 +183,7 @@ class TextQueue(commands.Cog):
         if not full_queue_posted:
             await self.helper.log("Queue too long for message - final entry/entries not displayed")
 
-        self.update_storage()
+        self.store.save()
 
         await utility.finish_processing(ctx)
 
@@ -253,7 +210,7 @@ class TextQueue(commands.Cog):
             await self.helper.log("Queue too long for message - final entry/entries not displayed")
             await utility.dm_user(ctx.author, "The queue is too long to display in full. Your entry may not be "
                                               "displayed currently, but is still in the queue.")
-        self.update_storage()
+        self.store.save()
 
         await utility.finish_processing(ctx)
 
@@ -281,7 +238,7 @@ class TextQueue(commands.Cog):
         full_queue_posted = await self.update_queue_message(queue)
         if not full_queue_posted:
             await self.helper.log("Queue too long for message - final entry/entries not displayed")
-        self.update_storage()
+        self.store.save()
         await utility.finish_processing(ctx)
         await self.helper.log(f"{ctx.author.mention} has run the EditEntry command")
 
@@ -304,7 +261,7 @@ class TextQueue(commands.Cog):
         full_queue_posted = await self.update_queue_message(queue)
         if not full_queue_posted:
             await self.helper.log("Queue too long for message - final entry/entries not displayed")
-        self.update_storage()
+        self.store.save()
         await utility.finish_processing(ctx)
         await self.helper.log(f"{ctx.author.mention} has run the EditNotes command")
 
@@ -325,7 +282,7 @@ class TextQueue(commands.Cog):
             full_queue_posted = await self.update_queue_message(queue)
             if not full_queue_posted:
                 await self.helper.log("Queue too long for message - final entry/entries not displayed")
-            self.update_storage()
+            self.store.save()
 
             await utility.finish_processing(ctx)
         else:
@@ -353,7 +310,7 @@ class TextQueue(commands.Cog):
             if not full_queue_posted:
                 await self.helper.log("Queue too long for message - final entry/entries not displayed")
 
-            self.update_storage()
+            self.store.save()
 
             await utility.finish_processing(ctx)
         else:
@@ -440,4 +397,4 @@ class FreeChannelNotificationView(nextcord.ui.View):
 
 
 def setup(bot: commands.Bot):
-    bot.add_cog(TextQueue(bot, utility.Helper(bot)))
+    bot.add_cog(TextQueue(bot, utility.Helper(bot), bot.data.queue, bot.data.reserve))

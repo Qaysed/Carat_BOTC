@@ -1,18 +1,20 @@
 import logging
 from typing import Optional
-
 import nextcord
 from nextcord.ext import commands
 
 import utility
-from Cogs.TextQueue import TextQueue
-from Cogs.Townsquare import Townsquare, Player
-
+from State.queue import QueueStore
+from State.townsquare import Player, TownSquareStore
+from TextQueue import update_queue_message, TextQueue
 
 class Grimoire(commands.Cog):
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, queues: QueueStore,
+                 townsquares: TownSquareStore):
         self.bot = bot
         self.helper = helper
+        self.queues = queues
+        self.townsquares = townsquares
 
     @nextcord.slash_command(name="grimoire", description="Manages grimoire ownerships.")
     async def grimoire(self, interaction: nextcord.Interaction):
@@ -21,6 +23,11 @@ class Grimoire(commands.Cog):
     @grimoire.subcommand(name="claim", description="Grants you the ST role of the given game.")
     async def grimoire_claim(self, interaction: nextcord.Interaction, 
                             game_number: str = nextcord.SlashOption(required=True, name="game_number")):
+        if interaction.user is None:
+            raise ValueError("Command requires a user")
+        if not isinstance(interaction.user, nextcord.Member):
+            await utility.deny_app_command(interaction, utility.DenialReason.MemberCommand)
+            return
         st_role = self.helper.get_st_role(game_number)
         if st_role is None:
             await utility.deny_app_command(interaction, utility.DenialReason.NoSTRole)
@@ -29,29 +36,29 @@ class Grimoire(commands.Cog):
         if game_channel is None:
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
-        
         if len(st_role.members) == 0 or self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer()
             await interaction.user.add_roles(st_role)
             await interaction.followup.send("You are now the current ST for game " + game_number, ephemeral=True)
-            queue: Optional[TextQueue] = self.bot.get_cog('TextQueue')
-            if queue is not None:
-                if game_number[0] == "b":
-                    channel_type = "Base"
-                elif game_number[0] == "x":
-                    channel_type = "Experimental"
-                else:
-                    channel_type = "Regular"
-                users_in_queue = [entry.st for entry in queue.queues[channel_type].entries]
-                if interaction.user.id not in users_in_queue:
-                    await interaction.followup.send(f"{interaction.user.mention} Warning - you are taking a channel without having "
-                                            f"been in the appropriate text ST queue. If that's how it's supposed to "
-                                            f"be, carry on - otherwise you can drop the grimoire with `/grimoire drop {game_number}` "
-                                            f"and join the text game queue (see `/HelpMe` for details)")
-                await queue.user_leave_queue(interaction.user)
+            if game_number[0] == "b":
+                channel_type = "Base"
+            elif game_number[0] == "x":
+                channel_type = "Experimental"
+            elif game_number[0] == "r":
+                return
+            else:
+                channel_type = "Regular"
+            users_in_queue = [entry.st for entry in self.queues.queues[channel_type].entries]
+            if interaction.user.id not in users_in_queue:
+                await interaction.followup.send(f"Warning - you are taking a channel without having "
+                                        f"been in the appropriate text ST queue. If that's how it's supposed to "
+                                        f"be, carry on - otherwise you can drop the grimoire with `/grimoire drop {game_number}` "
+                                        f"and join the text game queue (see `/HelpMe` for details)")
+            removed = self.queues.remove_user(interaction.user.id)
+            for queue in removed:
+                await update_queue_message(queue, self.helper)
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.AlreadySTS)
-
         await self.helper.log(f"{interaction.user.mention} has run the ClaimGrimoire Command for game {game_number}")
         minions_channel_id = 1199438203627773952
         Secondary_output_channel = self.bot.get_channel(minions_channel_id)
@@ -61,9 +68,17 @@ class Grimoire(commands.Cog):
     async def grimoire_give(self, interaction: nextcord.Interaction, 
                            game_number: str = nextcord.SlashOption(required=True, name="game_number"), 
                            member: nextcord.Member = nextcord.SlashOption(required=True, name="member")):
+        if interaction.user is None:
+            raise ValueError("Command requires a user")
+        if not isinstance(interaction.user, nextcord.Member):
+            await utility.deny_app_command(interaction, utility.DenialReason.MemberCommand)
+            return
         if self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer()
             st_role = self.helper.get_st_role(game_number)
+            if st_role is None:
+                await utility.deny_app_command(interaction, utility.DenialReason.NoSTRole)
+                return
             await member.add_roles(st_role)
             await interaction.user.remove_roles(st_role)
             await interaction.followup.send("You have assigned the current ST role for game " + str(game_number) +
@@ -82,12 +97,12 @@ class Grimoire(commands.Cog):
             st_role = self.helper.get_st_role(game_number)
             await interaction.user.remove_roles(st_role)
             await interaction.followup.send("You have removed the current ST role from yourself for game " + str(game_number), ephemeral=True)
+            # TODO: figure out a way to do this without the cog? presumably requires extracting the announcement view from the queue cog
             queue: Optional[TextQueue] = self.bot.get_cog('TextQueue')
             if queue is not None and len(st_role.members) == 0 and game_number[0] != "r":
                 await queue.announce_free_channel(game_number, 0)
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
-
         await self.helper.log(f"{interaction.user.mention} has run the DropGrimoire Command for game {game_number}")
 
     @grimoire.subcommand(name="share", description="Gives another member the ST role without taking it away from you")
@@ -97,9 +112,9 @@ class Grimoire(commands.Cog):
         if self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer()
             await member.add_roles(self.helper.get_st_role(game_number))
-            townsquare: Optional[Townsquare] = self.bot.get_cog('Townsquare')
-            if townsquare and game_number in townsquare.town_squares:
-                townsquare.town_squares[game_number].sts.append(Player(member.id, member.display_name))
+            if game_number in self.townsquares.town_squares:
+                self.townsquares.town_squares[game_number].sts.append(Player(member.id, member.display_name))
+                self.townsquares.save()
             await interaction.followup.send(f"You have added {member.display_name} as a ST.", ephemeral=True)
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
@@ -128,4 +143,4 @@ class Grimoire(commands.Cog):
 
 
 def setup(bot: commands.Bot):
-    bot.add_cog(Grimoire(bot, utility.Helper(bot)))
+    bot.add_cog(Grimoire(bot, utility.Helper(bot), bot.data.queue, bot.data.townsquare))

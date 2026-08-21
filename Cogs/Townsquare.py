@@ -5,18 +5,15 @@ import datetime
 import io
 import json
 import logging
-import os
-import traceback
-from dataclasses import dataclass, field
 from math import ceil
 from typing import List, Optional, Dict, Union, Callable, Literal
 
 import nextcord
-from dataclasses_json import dataclass_json
 from nextcord.ext import commands
 from nextcord.utils import get, utcnow, format_dt
 
 import utility
+from State.townsquare import Nomination, Player, TownSquare, TownSquareStore, Vote
 
 not_voted_yet = "-"
 confirmed_yes_vote = "confirmed_yes_vote"
@@ -24,55 +21,6 @@ confirmed_no_vote = "confirmed_no_vote"
 voted_yes_emoji = '\U00002705'  # ✅
 voted_no_emoji = '\U0000274C'  # ❌
 clock_emoji = '\U0001f566'  # 🕦
-
-
-@dataclass_json
-@dataclass
-class Player:
-    id: int
-    alias: str
-    can_vote: bool = True
-    dead: bool = False
-
-    def __eq__(self, other):
-        return isinstance(other, (Player, nextcord.User, nextcord.Member)) and self.id == other.id
-
-
-@dataclass_json
-@dataclass
-class Vote:
-    vote: str
-    banshee: bool = False
-    bureaucrat: bool = False
-    thief: bool = False
-
-
-@dataclass_json
-@dataclass
-class Nomination:
-    nominator: Player
-    nominee: Player
-    votes: Dict[int, Vote]
-    deadline: str
-    private_votes: Dict[int, str] = field(default_factory=dict)
-    accusation: str = "TBD"
-    defense: str = "TBD"
-    message: int = None
-    finished: bool = False
-
-
-@dataclass_json
-@dataclass
-class TownSquare:
-    players: List[Player]
-    sts: List[Player]
-    nominations: List[Nomination] = field(default_factory=list)
-    nomination_thread: int = None
-    log_thread: int = None
-    organ_grinder: bool = False
-    default_nomination_duration: int = 86400  # 1 day
-    player_noms_allowed: bool = True
-    vote_threshold: int = 0
 
 
 def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: Nomination,
@@ -143,25 +91,17 @@ def reordered_players(nom: Nomination, town_square: TownSquare) -> List[Player]:
 class Townsquare(commands.Cog):
     bot: commands.Bot
     helper: utility.Helper
-    TownSquaresStorage: str
-    town_squares: Dict[str, TownSquare]
+    store: TownSquareStore
     emoji: Dict[str, nextcord.PartialEmoji]
     vote_count_views: List[CountVoteView]
 
-    def __init__(self, bot: commands.Bot, helper: utility.Helper):
+    def __init__(self, bot: commands.Bot, helper: utility.Helper, store: TownSquareStore):
         self.bot = bot
         self.helper = helper
-        self.TownSquaresStorage = os.path.join(self.helper.StorageLocation, "townsquares.json")
+        self.store = store
         self.emoji = {}
         self.vote_count_views = []
-        self.town_squares = {}
-        if not os.path.exists(self.TownSquaresStorage):
-            self.update_storage()
-        else:
-            with open(self.TownSquaresStorage, 'r') as f:
-                json_data = json.load(f)
-                for game in json_data:
-                    self.town_squares[game] = TownSquare.from_dict(json_data[game])
+        self.town_squares = self.store.town_squares
 
     async def load_emoji(self):
         self.emoji = {}
@@ -198,13 +138,6 @@ class Townsquare(commands.Cog):
         else:
             self.emoji["organ_grinder"] = nextcord.PartialEmoji.from_str('\U0001f648')  # 🙈
             await self.helper.log("Organ grinder emoji not found, using default")
-
-    def update_storage(self):
-        json_data = {}
-        for game in self.town_squares:
-            json_data[game] = self.town_squares[game].to_dict()
-        with open(self.TownSquaresStorage, 'w') as f:
-            json.dump(json_data, f, indent=2)
 
     async def log(self, game_number: str, message: str):
         kibitz = self.helper.get_kibitz_channel(game_number)
@@ -338,7 +271,7 @@ class Townsquare(commands.Cog):
                 await log_thread.add_user(st)
             self.town_squares[game_number].log_thread = log_thread.id
             await self.log(game_number, f"Town square created: {self.town_squares[game_number]}")
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the storyteller for this game")
@@ -364,7 +297,7 @@ class Townsquare(commands.Cog):
                 for player in added_players:
                     nom.votes[player.id] = Vote(not_voted_yet)
                 await self.update_nom_message(game_number, nom)
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await self.log(game_number, f"{ctx.author.mention} has updated the town square: {new_player_list}")
         else:
@@ -438,7 +371,7 @@ class Townsquare(commands.Cog):
                                         f"{substitute.display_name}")
             logging.debug(f"Substituted {player} with {substitute} in game {game_number} - "
                           f"current town square: {self.town_squares[game_number]}")
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the storyteller for this game")
@@ -463,7 +396,7 @@ class Townsquare(commands.Cog):
                     await thread.add_user(substitute)
                     await asyncio.sleep(10)
             logging.debug(f"Substituted {player} with {substitute} in game {game_number}")
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the storyteller for this game")
@@ -491,7 +424,7 @@ class Townsquare(commands.Cog):
                                         f"{substitute.display_name}")
             logging.debug(f"Substituted {old_player_alias} with {substitute.display_name} in game {game_number} - "
                           f"current town square: {self.town_squares[game_number]}")
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the storyteller for this game")
@@ -511,7 +444,7 @@ class Townsquare(commands.Cog):
             for st in self.helper.get_st_role(game_number).members:
                 await thread.add_user(st)
             self.town_squares[game_number].nomination_thread = thread.id
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You are not the storyteller for this game")
@@ -569,7 +502,7 @@ class Townsquare(commands.Cog):
             self.town_squares[game_number].nominations.append(nom)
             logging.debug(f"Nomination created: in game {game_number}: {nom}")
             await utility.finish_processing(ctx)
-            self.update_storage()
+            self.store.save()
             await self.log(game_number, f"{converted_nominator.alias} has nominated {converted_nominee.alias}")
 
     @commands.command()
@@ -597,7 +530,7 @@ class Townsquare(commands.Cog):
             return
         if ctx.author.id == nom.nominator.id or self.helper.authorize_st_command(ctx.author, game_number):
             nom.accusation = accusation
-            self.update_storage()
+            self.store.save()
             await self.update_nom_message(game_number, nom)
             await utility.finish_processing(ctx)
             await self.log(game_number, f"{ctx.author} has added this accusation to the nomination of "
@@ -630,7 +563,7 @@ class Townsquare(commands.Cog):
             return
         if ctx.author.id == nom.nominee.id or self.helper.authorize_st_command(ctx.author, game_number):
             nom.defense = defense
-            self.update_storage()
+            self.store.save()
             await self.update_nom_message(game_number, nom)
             await utility.finish_processing(ctx)
             await self.log(game_number,
@@ -650,7 +583,7 @@ class Townsquare(commands.Cog):
             self.town_squares[game_number].vote_threshold = target
             for nom in [nom for nom in self.town_squares[game_number].nominations if not nom.finished]:
                 await self.update_nom_message(game_number, nom)
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await self.log(game_number, f"{ctx.author} has set the vote threshold to {target}")
 
@@ -674,7 +607,7 @@ class Townsquare(commands.Cog):
                 await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
                 return
             nom.deadline = format_dt(utcnow() + time, "R")
-            self.update_storage()
+            self.store.save()
             await self.update_nom_message(game_number, nom)
             await utility.finish_processing(ctx)
             await self.log(game_number, f"{ctx.author} has set the deadline for the nomination of {nom.nominee.alias} "
@@ -692,7 +625,7 @@ class Townsquare(commands.Cog):
                 await utility.deny_command(ctx, "Deadline must be in the future")
                 return
             self.town_squares[game_number].default_nomination_duration = hours * 3600
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You must be the ST to use this command")
@@ -757,7 +690,7 @@ class Townsquare(commands.Cog):
                 await self.update_nom_message(game_number, nom)
                 await self.log(game_number,
                                f"{ctx.author} has set their vote on the nomination of {nom.nominee.alias} to {vote}")
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
         else:
             await utility.deny_command(ctx, "You must be a player to vote. "
@@ -797,7 +730,7 @@ class Townsquare(commands.Cog):
                                                 "you cannot set your vote to it.")
                 return
             nom.private_votes[voter.id] = vote
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await self.log(game_number,
                            f"{ctx.author} has set a private vote on the nomination of {nom.nominee.alias} as {vote}")
@@ -826,7 +759,7 @@ class Townsquare(commands.Cog):
                                            "You are not included in the town square. Ask the ST to correct this.")
                 return
             private_vote = nom.private_votes.pop(voter.id, None)
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             if private_vote:
                 await utility.dm_user(ctx.author, f"Your private vote on the nomination of {nom.nominee.alias} "
@@ -923,7 +856,7 @@ class Townsquare(commands.Cog):
                 return
             else:
                 nom.finished = True
-                self.update_storage()
+                self.store.save()
                 await utility.finish_processing(ctx)
                 await self.log(game_number, f"{ctx.author} has closed the nomination of {nom.nominee.alias}")
         else:
@@ -947,7 +880,7 @@ class Townsquare(commands.Cog):
                                            "You are not included in the town square. Ask the ST to correct this.")
                 return
             player.alias = alias
-            self.update_storage()
+            self.store.save()
             await self.log(game_number, f"{ctx.author.name} has set their alias to {alias}")
             await utility.finish_processing(ctx)
         elif st_role in ctx.author.roles:
@@ -958,7 +891,7 @@ class Townsquare(commands.Cog):
                                                 "Try dropping and re-adding the grimoire")
                 return
             st.alias = alias
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await self.log(game_number, f"{ctx.author.name} has set their alias to {alias}")
         else:
@@ -973,7 +906,7 @@ class Townsquare(commands.Cog):
         if self.helper.authorize_st_command(ctx.author, game_number):
             await utility.start_processing(ctx)
             self.town_squares[game_number].organ_grinder = not self.town_squares[game_number].organ_grinder
-            self.update_storage()
+            self.store.save()
             for nom in self.town_squares[game_number].nominations:
                 if not nom.finished:
                     await self.update_nom_message(game_number, nom)
@@ -994,7 +927,7 @@ class Townsquare(commands.Cog):
                 await utility.deny_command(ctx, "Town square not set up yet.")
                 return
             self.town_squares[game_number].player_noms_allowed = not self.town_squares[game_number].player_noms_allowed
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await utility.dm_user(ctx.author,
                                   f"Player nominations are now "
@@ -1017,7 +950,7 @@ class Townsquare(commands.Cog):
                 await utility.deny_command(ctx, f"{player_user.display_name} is not included in the town square.")
                 return
             player.dead = not player.dead
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await utility.dm_user(ctx.author, f"{player.alias} is now "
                                               f"{'marked as dead' if player.dead else 'marked as living'}")
@@ -1041,7 +974,7 @@ class Townsquare(commands.Cog):
                 await utility.deny_command(ctx, f"{player_user.display_name} is not included in the town square.")
                 return
             player.can_vote = not player.can_vote
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await utility.dm_user(ctx.author, f"{player.alias} can now "
                                               f"{'vote' if player.can_vote else 'not vote'}")
@@ -1069,7 +1002,7 @@ class Townsquare(commands.Cog):
                 content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji)
                 nom_message = await nom_thread.send(content=content, embed=embed)
                 nom.message = nom_message.id
-            self.update_storage()
+            self.store.save()
             await utility.finish_processing(ctx)
             await utility.dm_user(ctx.author, f"Recreated nominations for {game_number}")
             await self.log(game_number, f"Recreated nominations")
@@ -1085,7 +1018,6 @@ class Townsquare(commands.Cog):
             json_str = json.dumps(json_data, indent=2)
             bytes_data = io.BytesIO(json_str.encode("utf-8"))
             await ctx.author.send(f"Townsquare {game_number} json", file=nextcord.File(bytes_data, f"Townsquare_{game_number}.json"))
-
 
 
 class CountVoteView(nextcord.ui.View):
@@ -1183,7 +1115,7 @@ class CountVoteView(nextcord.ui.View):
                 self.cog.vote_count_views.remove(self)
         await self.update_message()
         await self.cog.update_nom_message(self.game_number, self.nom)
-        self.cog.update_storage()
+        self.cog.store.save()
 
     @nextcord.ui.button(label="Count as yes", custom_id="yes", style=nextcord.ButtonStyle.green, row=1)
     async def vote_yes_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
@@ -1242,7 +1174,7 @@ class CountVoteView(nextcord.ui.View):
             return
         self.player_list[self.player_index].dead = True
         button.disabled = True
-        self.cog.update_storage()
+        self.cog.store.save()
         await self.update_message()
 
     @nextcord.ui.button(label="Loses vote", custom_id="deadvote", style=nextcord.ButtonStyle.grey, row=2)
@@ -1252,7 +1184,7 @@ class CountVoteView(nextcord.ui.View):
             return
         self.player_list[self.player_index].can_vote = False
         button.disabled = True
-        self.cog.update_storage()
+        self.cog.store.save()
         await self.update_message()
 
     @nextcord.ui.button(label="Ping current player", custom_id="ping_current", style=nextcord.ButtonStyle.red, row=3)
@@ -1281,6 +1213,6 @@ class CountVoteView(nextcord.ui.View):
 
 
 async def setup(bot: commands.Bot):
-    cog = Townsquare(bot, utility.Helper(bot))
+    cog = Townsquare(bot, utility.Helper(bot), bot.data.townsquare)
     await cog.load_emoji()
     bot.add_cog(cog)
