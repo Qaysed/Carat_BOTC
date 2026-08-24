@@ -2,6 +2,7 @@ from time import strftime, gmtime
 from typing import Optional
 
 from nextcord.ext import commands
+import nextcord
 
 import utility
 from State.townsquare import TownSquareStore
@@ -13,79 +14,53 @@ class Game(commands.Cog):
         self.helper = helper
         self.townsquares = townsquares
 
-    @commands.command()
-    async def OpenKibitz(self, ctx, game_number):
-        """Makes the kibitz channel to the game visible to the public.
-        Players will still need to remove their game role to see it. Use after the game has concluded.
-        Will also send a message reminding players to give feedback for the ST and provide a link to do so.
-        In most cases, EndGame may be the more appropriate command."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-
-            # Change permission of Kibitz to allow Townsfolk to view
+    @nextcord.slash_command(name="open_kibitz", description="Manually opens the kibitz channel so anyone can view it.")
+    async def open_kibitz(self, interaction: nextcord.Interaction, 
+                         game_number: str = nextcord.SlashOption(required=True, name="game_number")):
+        if self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=True)
             game_role = self.helper.get_game_role(game_number)
-            await ctx.channel.send(
+            await interaction.followup.send(
                 f"{game_role.mention} Kibitz is now being opened (found [here]({kibitz_channel.jump_url})) - remove your game role to access it. " +
                 f"Remember to give your ST(s) any feedback you may have!\n" +
                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A")
-
-            # React for completion
-            await utility.finish_processing(ctx)
         else:
-            # React on Disapproval
-            await utility.deny_command(ctx, "You are not the current ST for game " + str(game_number))
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
-        await self.helper.log(f"{ctx.author.mention} has run the OpenKibitz Command on Game {game_number}")
+        await self.helper.log(f"{interaction.user.mention} has run the open kibitz command on game {game_number}")
 
-    @commands.command()
-    async def CloseKibitz(self, ctx, game_number):
-        """Makes the kibitz channel to the game hidden from the public.
-        This is typically already the case when you claim a grimoire, but might not be in some cases. Make sure none of
-         your players have the kibitz role, as they could still see the channel in that case."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            # React on Approval
-            await utility.start_processing(ctx)
-
-            # Change permission of Kibitz to allow Townsfolk to view
+    @nextcord.slash_command(name="close_kibitz", description="Manually closes the kibitz channel.")
+    async def close_kibitz(self, interaction: nextcord.Interaction, 
+                           game_number: str = nextcord.SlashOption(required=True, name="game_number")):
+        if self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
-
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
-
-            # React for completion
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Kibitz has been closed", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the current ST for game " + game_number)
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
-        await self.helper.log(f"{ctx.author.mention} has run the CloseKibitz Command on Game {game_number}")
+        await self.helper.log(f"{interaction.user.mention} has run the close kibitz command on game {game_number}")
 
-    @commands.command()
-    async def EndGame(self, ctx: commands.Context, game_number):
-        """Opens Kibitz to the public and cleans up after the game.
-        This includes removing the game role from players and the kibitz role from kibitzers, sending a message
-        reminding players to give feedback for the ST with a link to do so,
-        and resetting the town square if there is one."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            # React on Approval
-            await utility.start_processing(ctx)
-
-            # Gather member list & role information
+    @nextcord.slash_command(name="end_game", description="Opens kibitz and cleans up after the game. Use after the game is done.")
+    async def end_game(self, interaction: nextcord.Interaction, 
+                      game_number: str = nextcord.SlashOption(required=True, name="game_number")):
+        if self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             kibitz_role = self.helper.get_kibitz_role(game_number)
             game_role = self.helper.get_game_role(game_number)
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
-
-            await ctx.channel.send(
+            await interaction.followup.send(
                 f"{game_role.mention} Kibitz is now being opened (found [here]({kibitz_channel.jump_url})). "
                 f"Remember to give your ST(s) any feedback you may have!\n" +
                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A"
             )
             members = game_role.members
             members += kibitz_role.members
-
-            # Remove roles from non-bot players
             for member in members:
                 if not member.bot:
                     await member.remove_roles(kibitz_role)
@@ -95,43 +70,32 @@ class Game(commands.Cog):
                 self.townsquares.town_squares.pop(game_number)
                 self.townsquares.save()
 
-            # Change permission of Kibitz to allow Townsfolk to view
             townsfolk_role = self.helper.Guild.default_role
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=True)
-
-            # React for completion
-            await utility.finish_processing(ctx)
-
         else:
-            # React on Disapproval
-            await utility.deny_command(ctx, "You are not the current ST for game " + game_number)
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
-        await self.helper.log(f"{ctx.author.mention} has run the EndGame Command on Game {game_number}")
+        await self.helper.log(f"{interaction.user.mention} has run the end game command on game {game_number}")
 
-    @commands.command()
-    async def ArchiveGame(self, ctx, game_number):
-        """Moves the game channel to the archive and creates a new empty channel for the next game.
-        Also makes the kibitz channel hidden from the public. Use after post-game discussion has concluded.
-        Do not remove the game number from the channel name until after archiving.
-        You will still be able to do so afterward."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            # React on Approval
-            await utility.start_processing(ctx)
-
+    @nextcord.slash_command(name="archive_game", description="Moves the game channel to the archive and creates a new empty channel.")
+    async def archive_game(self, interaction: nextcord.Interaction, 
+                           game_number: str = nextcord.SlashOption(required=True, name="game_number"),
+                           archive_name: str = nextcord.SlashOption(required=True, name="archive_name")):
+        if self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
             st_role = self.helper.get_st_role(game_number)
             game_channel = self.helper.get_game_channel(game_number)
             if game_channel is None:
-                await utility.deny_command(ctx, "No game for that number found")
+                await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
                 return
             game_position = game_channel.position
-            game_channel_name = game_channel.name
             archive_category = self.helper.ArchiveCategory
             if len(archive_category.channels) == 50:
-                await utility.deny_command(ctx, "Archive category is full")
-                await game_channel.send(f"{self.helper.ModRole.mention} The archive category is full, so this channel "
-                                        f"cannot be archived")
+                await utility.deny_app_command(interaction, utility.DenialReason.ArchiveFull)
+                await interaction.followup.send(f"{self.helper.ModRole.mention} The archive category is full, so this channel "
+                                                f"cannot be archived")
                 return
             if game_number[0] != "r":
                 new_channel = await game_channel.clone(reason="New Game")
@@ -147,21 +111,15 @@ class Game(commands.Cog):
                     await game_channel.set_permissions(st, overwrite=member_permissions)
                 else:
                     await game_channel.set_permissions(st, manage_threads=True)
-            await game_channel.edit(category=archive_category, name=str(game_channel_name) + " Archived on " + str(
-                strftime("%a, %d %b %Y %H %M %S ", gmtime())), topic="")
-
+            await game_channel.edit(category=archive_category, name=archive_name, topic="")
+            
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
-            await game_channel.send(
-                 f"Kibitz is now being opened. "
-                 f"Remember to give your ST(s) any feedback you may have!\n" +
-                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A"
-                 )
-
+            await interaction.followup.send("Game successfully archived! Please drop the ST role at your soonest convenience.", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the current ST for game " + game_number)
+            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
 
-        await self.helper.log(f"{ctx.author.mention} has run the ArchiveGame Command for Game {game_number}")
+        await self.helper.log(f"{interaction.user.mention} has run the archive game command for game {game_number}")
 
 
 def setup(bot):

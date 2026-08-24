@@ -31,6 +31,7 @@ class DenialReason(Enum):
     NoNominationThread = f"{SweatSmileEmoji} The nomination thread hasn't been created yet"
     NoSTRole = f"{ConfusedEmoji} There is no ST role for this game"
     AlreadySTS = f"{SweatSmileEmoji} There is already someone with the ST role for this game"
+    ArchiveFull = f"{SweatSmileEmoji} The archive category is full"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
