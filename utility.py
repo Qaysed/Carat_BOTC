@@ -43,6 +43,9 @@ class DenialReason(Enum):
     InvalidStartDate = f"{SweatSmileEmoji} Invalid start date. Use either a number (of days), YYYY-MM-DD, MM-DD format, or nothing to set to the earliest option (2 weeks)"
     NotRSVPForum = f"{SweatSmileEmoji} You must create a post in the RSVP text game forum and use this command there to reserve a game"
     InvalidReminderTime = f"{ConfusedEmoji} Could not parse a time. Accepted formats are number of hours or hh:mm, e.g. 24, 6.5 or 2:56"
+    NotAThread = f"{SweatSmileEmoji} This command can only be used in a thread"
+    NotATextChannel = f"{SweatSmileEmoji} This command can only be used in a text channel"
+    NotArchiveServer = f"{SweatSmileEmoji} This command can be used in an registered archive server"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
