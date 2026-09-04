@@ -346,7 +346,7 @@ class Reserve(commands.Cog):
             thread = get(self.helper.ReservingForum.threads, id=thread)
             await thread.send("This game has been cancelled by the ST")
             await interaction.followup.send(f"Your game has been cancelled")
-            await self.helper.log(f"{interaction.user.display_name} has cancelled their RSVP game")
+            await self.helper.log(f"{interaction.user.mention} has cancelled their RSVP game")
 
     @reserve.subcommand(name="list", description="Lists the reserved games starting in the next specified number of days.")
     async def list_reserve_games(self, interaction: nextcord.Interaction, 
@@ -411,8 +411,12 @@ class Reserve(commands.Cog):
                 return
             thread = get(self.helper.ReservingForum.threads, id=thread)
             await thread.send("This game has been cancelled")
-            await interaction.followup.send(f"You removed {st.display_name} reservation")
-            await self.helper.log(f"{interaction.user.display_name} has removed {st.display_name}'s reservation")
+            try: # to suppress unwanted errors with people who left the server
+                await interaction.followup.send(f"You removed {st.display_name}'s reservation")
+                await self.helper.log(f"{interaction.user.mention} has removed {st.mention}'s reservation")
+            except:
+                await interaction.followup.send(f"You removed {st.id}'s reservation")
+                await self.helper.log(f"{interaction.user.mention} has removed {st.id}'s reservation")
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
@@ -441,7 +445,7 @@ class Reserve(commands.Cog):
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(f"This game's start date has been changed to {entry.date}")
             await interaction.followup.send(f"Start date for {st.display_name}'s RSVP game changed to {entry.date}")
-            await self.helper.log(f"{interaction.user.display_name} has changed {st.display_name}'s reservation start date to {start_day}")
+            await self.helper.log(f"{interaction.user.mention} has changed {st.mention}'s reservation start date to {start_day}")
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
@@ -472,7 +476,7 @@ class Reserve(commands.Cog):
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(f"This game's minimum player count has been changed to {new_min}")
             await interaction.followup.send(f"Player minimum for {st.display_name}'s game changed to {new_min}")
-            await self.helper.log(f"{interaction.user.display_name} has changed {st.display_name}'s reservation min player count to {new_min}")
+            await self.helper.log(f"{interaction.user.mention} has changed {st.mention}'s reservation min player count to {new_min}")
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
@@ -488,9 +492,14 @@ class Reserve(commands.Cog):
             entry = self.entries[st.id] 
             entry.players = [p for p in entry.players if p != player.id]
             self.store.save()
-            await interaction.followup.send(f"Player removed from {st.display_name}'s game, "
-                                            f"you might need to refresh the sign up list for this to appear")
-            await self.helper.log(f"{interaction.user.display_name} has removed {player.display_name} from {st.display_name}'s RSVP entry")
+            try: # to suppress unwanted errors with people who left the server
+                await interaction.followup.send(f"{player.display_name} removed from {st.display_name}'s game, "
+                                                f"you might need to refresh the sign up list for this to appear")
+                await self.helper.log(f"{interaction.user.mention} has removed {player.mention} from {st.mention}'s RSVP entry")
+            except:
+                await interaction.followup.send(f"Player removed from {st.display_name}'s game, "
+                                                f"you might need to refresh the sign up list for this to appear")
+                await self.helper.log(f"{interaction.user.mention} has removed {player.id} from {st.mention}'s RSVP entry")
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 

@@ -33,10 +33,12 @@ class DenialReason(Enum):
     AlreadySTS = f"{SweatSmileEmoji} There is already someone with the ST role for this game"
     ArchiveFull = f"{SweatSmileEmoji} The archive category is full"
     InQueue = f"{ConfusedEmoji} You are already in the text game queue"
+    NotInQueue = f"{ConfusedEmoji} You are not in the text game queue"
+    QueueTypeNotInitialised = f"{ConfusedEmoji} Queue type not initialised"
     AlreadyReserved = f"{ConfusedEmoji} You already have an RSVP entry"
+    NoReservation = f"{SweatSmileEmoji} No reservation found"
     InvalidStartDate = f"{SweatSmileEmoji} Invalid start date. Use either a number (of days), YYYY-MM-DD, MM-DD format, or nothing to set to the earliest option (2 weeks)"
     NotRSVPForum = f"{SweatSmileEmoji} You must create a post in the RSVP text game forum and use this command there to reserve a game"
-    NoReservation = f"{SweatSmileEmoji} No reservation found"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
@@ -124,6 +126,13 @@ class Helper:
         self.LogChannel = require(get(self.Guild.channels, id=int(os.environ['LOG_CHANNEL_ID'])), "LogChannel")
         if not isinstance(self.LogChannel, nextcord.abc.Messageable):
             raise EnvironmentError("Log channel must be messageable")
+        try:
+            self.SecondaryOutputChannel = get(self.Guild.channels, id=int(os.environ['SECONDARY_OUTPUT_CHANNEL']))
+        except:
+            self.SecondaryOutputChannel = None
+            logging.warning("Count not load secondary output channel from enviroment, continuing with it")
+        if self.SecondaryOutputChannel and not isinstance(self.SecondaryOutputChannel, nextcord.abc.Messageable):
+            logging.warning("Secondary output channel not messageable, continuing without it")
         self.StorageLocation = os.environ['STORAGE_LOCATION']
         self.OwnerId = int(os.environ['OWNER_ID'])
 
