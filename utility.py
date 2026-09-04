@@ -1,3 +1,4 @@
+
 from enum import Enum
 import io
 import logging
@@ -30,6 +31,8 @@ class DenialReason(Enum):
     NoTownSquare = f"{SweatSmileEmoji} The town square for that game hasn't been set up"
     NoNominationThread = f"{SweatSmileEmoji} The nomination thread hasn't been created yet"
     NoSTRole = f"{ConfusedEmoji} There is no ST role for this game"
+    NoPlayerRole = f"{ConfusedEmoji} There is no player role for this game"
+    NoKibitzRole = f"{ConfusedEmoji} There is no kibitz role for this game"
     AlreadySTS = f"{SweatSmileEmoji} There is already someone with the ST role for this game"
     ArchiveFull = f"{SweatSmileEmoji} The archive category is full"
     InQueue = f"{ConfusedEmoji} You are already in the text game queue"
@@ -39,6 +42,7 @@ class DenialReason(Enum):
     NoReservation = f"{SweatSmileEmoji} No reservation found"
     InvalidStartDate = f"{SweatSmileEmoji} Invalid start date. Use either a number (of days), YYYY-MM-DD, MM-DD format, or nothing to set to the earliest option (2 weeks)"
     NotRSVPForum = f"{SweatSmileEmoji} You must create a post in the RSVP text game forum and use this command there to reserve a game"
+    InvalidReminderTime = f"{ConfusedEmoji} Could not parse a time. Accepted formats are number of hours or hh:mm, e.g. 24, 6.5 or 2:56"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
     return author.id in DeveloperIds
