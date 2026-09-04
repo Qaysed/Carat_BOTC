@@ -28,12 +28,10 @@ class Reminder:
                f"`{' '.join(text_elements)}`"
 
     @staticmethod
-    def create(reminder_time: datetime.datetime, channel: int, mention: str | None, event: str,
+    def create(reminder_time: datetime.datetime, channel: int, text: str,
                end_of_countdown: datetime.datetime) -> "Reminder":
-        text = event if mention is None else f"{mention} {event}"
-        if reminder_time != end_of_countdown:
-            text += f" {format_dt(end_of_countdown, 'R')} ({format_dt(end_of_countdown, 't')})"
-        return Reminder(reminder_time.isoformat(), channel, text)
+        reminder_text = text + f" {format_dt(end_of_countdown, 'R')} ({format_dt(end_of_countdown, 't')})"
+        return Reminder(reminder_time.isoformat(), channel, reminder_text)
 
 
 class ReminderStore:
