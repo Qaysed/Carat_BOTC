@@ -55,101 +55,110 @@ class Archive(commands.Cog):
         self.store = store
         self.threads_by_channel = self.store.threads_by_channel
 
-    @commands.command()
-    async def IncludeInArchive(self, ctx: commands.Context):
-        """Marks a thread as to be included in the archive. Use in the thread you want to include.
-        By default, private threads are not archived, and public threads are. Use IncludeInArchive to include a
-        private thread in the archive, or to undo ExcludeFromArchive for a public thread."""
-        thread = ctx.channel
+    @nextcord.slash_command(name="archive", description="Manages off server archive and commands related to that.")
+    async def archive(self, interaction: nextcord.Interaction):
+        pass
+
+    @archive.subcommand(name="include", description="Marks a thread as to be included in the archive. Use in the thread you want to include.")
+    async def include(self, interaction: nextcord.Interaction):
+        thread = interaction.channel
         if thread.type == nextcord.ChannelType.private_thread:
-            await utility.start_processing(ctx)
+            await interaction.response.defer()
             if thread.parent.id not in self.threads_by_channel:
                 self.threads_by_channel[thread.parent.id] = ThreadList()
             if thread.id not in self.threads_by_channel[thread.parent.id].private_to_archive:
                 self.threads_by_channel[thread.parent.id].private_to_archive.append(thread.id)
+                await interaction.followup.send("This thread is now set to be included in the archive")
             else:
-                await utility.dm_user(ctx.author, "This thread is already included in the archive.")
-            await utility.finish_processing(ctx)
-            await self.helper.log(f"{ctx.author.display_name} has run the IncludeInArchive Command")
+                await interaction.followup.send("This thread is already included in the archive")
+            await self.helper.log(f"{interaction.user.display_name} has run the 'archive include' command in {thread.mention}")
             self.store.save()
         elif thread.type == nextcord.ChannelType.public_thread:
-            await utility.start_processing(ctx)
+            await interaction.response.defer()
             if thread.parent.id not in self.threads_by_channel:
                 self.threads_by_channel[thread.parent.id] = ThreadList()
             if thread.id in self.threads_by_channel[thread.parent.id].public_to_not_archive:
                 self.threads_by_channel[thread.parent.id].public_to_not_archive.remove(thread.id)
+                await interaction.followup.send("This thread is now set to be included in the archive")
             else:
-                await utility.dm_user(ctx.author, "This thread is already included in the archive.")
-            await utility.finish_processing(ctx)
-            await self.helper.log(f"{ctx.author.display_name} has run the IncludeInArchive Command")
+                await interaction.followup.send("This thread is already included in the archive")
+            await self.helper.log(f"{interaction.user.display_name} has run the 'archive include' command in {thread.mention}")
             self.store.save()
         else:
-            await utility.deny_command(ctx, "This command can only be used in a thread.")
+            await utility.deny_app_command(interaction, utility.DenialReason.NotAThread)
 
-    @commands.command()
-    async def ExcludeFromArchive(self, ctx: commands.Context):
-        """Marks a thread as not to be included in the archive. Use in the thread you want to exclude.
-        By default, private threads are not archived, and public threads are. Use ExcludeFromArchive to exclude a
-        public thread from the archive, or to undo IncludeInArchive for a private thread."""
-        thread = ctx.channel
+    @archive.subcommand(name="exclude", description="Marks a thread as to be excluded from the archive. Use in the thread you want to exclude.")
+    async def exclude(self, interaction: nextcord.Interaction):
+        thread = interaction.channel
         if thread.type == nextcord.ChannelType.private_thread:
-            await utility.start_processing(ctx)
+            await interaction.response.defer()
             if thread.parent.id not in self.threads_by_channel:
                 self.threads_by_channel[thread.parent.id] = ThreadList()
             if thread.id in self.threads_by_channel[thread.parent.id].private_to_archive:
                 self.threads_by_channel[thread.parent.id].private_to_archive.remove(thread.id)
+                await interaction.followup.send("This thread is now set to be excluded from the archive")
             else:
-                await utility.dm_user(ctx.author, "This thread is already not included in the archive.")
-            await utility.finish_processing(ctx)
-            await self.helper.log(f"{ctx.author.display_name} has run the ExcludeFromArchive Command")
+                await interaction.followup.send("This thread is already excluded from the archive")
+            await self.helper.log(f"{interaction.user.display_name} has run the 'archive exclude' command in {thread.mention}")
             self.store.save()
         elif thread.type == nextcord.ChannelType.public_thread:
-            await utility.start_processing(ctx)
+            await interaction.response.defer()
             if thread.parent.id not in self.threads_by_channel:
                 self.threads_by_channel[thread.parent.id] = ThreadList()
             if thread.id not in self.threads_by_channel[thread.parent.id].public_to_not_archive:
                 self.threads_by_channel[thread.parent.id].public_to_not_archive.append(thread.id)
+                await interaction.followup.send("This thread is now set to be excluded from the archive")
             else:
-                await utility.dm_user(ctx.author, "This thread is already not included in the archive.")
-            await utility.finish_processing(ctx)
-            await self.helper.log(f"{ctx.author.display_name} has run the ExcludeFromArchive Command")
+                await interaction.followup.send("This thread is already excluded from the archive")
+            await self.helper.log(f"{interaction.user.display_name} has run the 'archive exclude' command in {thread.mention}")
             self.store.save()
         else:
-            await utility.deny_command(ctx, "This command can only be used in a thread.")
+            await utility.deny_app_command(interaction, utility.DenialReason.NotAThread)
 
-    @commands.command()
-    async def ClaimRole(self, ctx: commands.Context):
-        await utility.start_processing(ctx)
-        Unique_role_name = str(ctx.author.id)
-        archive_server = self.helper.bot.get_guild(1447544308675907656)
-        Unique_role = nextcord.utils.get(archive_server.roles, name=Unique_role_name)
-        if Unique_role is None:
-            Unique_role = await archive_server.create_role(name=Unique_role_name)
-        await ctx.author.add_roles(Unique_role)
-        await utility.finish_processing(ctx)
+    @archive.subcommand(name="claim_role", description="Claims your unique role for this server, this allows you to view threads of games you STed.")
+    async def claim_role(self, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        # TODO: Remove hard coded archive server ids - probably via a set up command or .env-dist
+        if interaction.guild_id is None or interaction.guild_id not in [959219314014163036, 1203126128693354516, 1317487976309329920, 1447544308675907656]:
+            await utility.deny_app_command(interaction, utility.DenialReason.NotArchiveServer)
+            return
+        archive_server = interaction.guild
+        unique_role_name = str(interaction.user.id)
+        unique_role = nextcord.utils.get(archive_server.roles, name=unique_role_name)
+        if unique_role is None:
+            unique_role = await archive_server.create_role(name=unique_role_name)
+        await interaction.user.add_roles(unique_role)
+        await interaction.followup.send("You have claimed your unique role")
 
-    @commands.command()
-    async def OffServerArchive(self, ctx: commands.Context, archive_server_id: int, st: nextcord.Member, archive_channel_id: int =0):
-        """Copies the channel the message was sent in to the provided server and channel, message by message.
-        Attachments may not be preserved if they are too large. Also creates a discussion thread at the end.
-        Public threads are also copied, private threads are not, except where someone specifically excluded or
-        included them."""
-                
-        access = self.helper.authorize_mod_command(ctx.author)
+    @archive.subcommand(name="off_server_archive", description="Copies the channel the message was sent in to the provided server and channel, message by message.")
+    async def off_server_archive(self, interaction: nextcord.Interaction, 
+                                 archive_server_id: str = nextcord.SlashOption(required=True), # discord has a build in max int cap so str is used instead
+                                 st: nextcord.Member = nextcord.SlashOption(required=True), 
+                                 archive_channel_id: str = nextcord.SlashOption(required=False, default=None)):
+        if interaction.channel is None or interaction.channel.type != nextcord.ChannelType.text:
+            await utility.deny_app_command(interaction, utility.DenialReason.NotATextChannel)
+            return 
         # Ivy Access
-        if access or ctx.author.id == ivy_id:
-            # React on Approval
-            await utility.start_processing(ctx)
+        if self.helper.authorize_mod_command(interaction.user) or interaction.user.id == ivy_id:
+            await interaction.response.defer()
 
-            channel_to_archive = ctx.message.channel
+            channel_to_archive = interaction.channel
 
-            archive_server = self.helper.bot.get_guild(archive_server_id)
+            archive_server = None
+            if archive_server_id.isdigit():
+                archive_server = self.helper.bot.get_guild(int(archive_server_id))
             if archive_server is None:
-                await utility.dm_user(ctx.author, f"Was unable to find server with ID {archive_server_id}")
+                await interaction.followup.send(f"Was unable to find server with ID {archive_server_id}")
                 return
 
-            archive_channel = get(archive_server.channels, id=archive_channel_id)
-            if archive_channel is None:
+            if archive_channel_id is not None:
+                archive_channel = None
+                if archive_channel_id.isdigit():
+                    archive_channel = get(archive_server.channels, id=int(archive_channel_id))
+                if archive_channel is None or archive_channel.type != nextcord.ChannelType.text:
+                    await interaction.followup.send(f"Was unable to find a text channel with ID {archive_channel_id}")
+                    return
+            else:
                 channel_name = str(channel_to_archive.name) + "-" + str(st.display_name)
                 archive_channel = await archive_server.create_text_channel(name=channel_name)
 
@@ -201,17 +210,16 @@ class Archive(commands.Cog):
 
             await archive_channel.set_permissions(unique_role, manage_threads=True)
 
-            await utility.finish_processing(ctx)
             self.threads_by_channel.pop(channel_to_archive.id, None)
             self.store.save()
 
-            await self.helper.log(f"{ctx.author.display_name} has run the OffServerArchive Command")
-            message = f"Your Archive for {ctx.message.channel.name} is done."
+            await interaction.followup.send(f"Your archive for {interaction.channel.name} is done.")
+            await self.helper.log(f"{interaction.user.display_name} has run the OffServerArchive Command")
             if errors > 0:
                 message += f" {errors} messages caused unknown errors and were not archived."
-            await utility.dm_user(ctx.author, message)
+                await interaction.followup.send(message, ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You do not have permission to use this command")
+            await utility.deny_app_command(interaction,  utility.DenialReason.NoPermission)
 
     @tasks.loop(hours=24)
     async def adjust_thread_archive_time():

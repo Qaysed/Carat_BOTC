@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Optional
 
+import nextcord
 from nextcord.ext import commands, tasks
 from nextcord.utils import utcnow
 
@@ -39,84 +40,88 @@ class Reminders(commands.Cog):
     def update_storage(self):
         self.store.save()
 
-    @commands.command(usage="<game_number> [event] [times]... <'ping-st'> <'no-player-ping'>")
-    async def SetReminders(self, ctx, *args):
-        """At the given times, sends reminders to the players how long they have until the event occurs.
-        The event argument is optional and defaults to "Whispers close". Times must be given in hours from the
-        current time, either as integer, decimal number or in hh:mm format. You can give any number of times.
-        The event is assumed to occur at the latest given time. You can have the reminders also ping Storytellers
-        and/or not ping players by adding 'ping-st'/'no-player-ping'"""
-        # parse arguments
-        ping_st = "ping-st" in args
-        no_player_ping = "no-player-ping" in args
-        args = tuple(arg for arg in args if arg not in ["ping-st", "no-player-ping"])
-        if len(args) < 2:
-            await utility.deny_command(ctx, "At least game number and one reminder time are required")
-            return
-        game_number = args[0]
+    @nextcord.slash_command(name="reminders", description="Manages reminders for game channels")
+    async def reminders(self, interaction: nextcord.Interaction):
+        pass
+
+    @reminders.subcommand(name="set", description="Sets reminders for the given game number.")
+    async def set(self, interaction: nextcord.Interaction, 
+                  game_number: str = nextcord.SlashOption(required=True),
+                  message: str = nextcord.SlashOption(required=True),
+                  input_times: str = nextcord.SlashOption(required=True, name="times", description="The times in hours from now you want reminders. Enter as a list of numbers e.g. 24, 18:15, 7.25"),
+                  ping_st: bool = nextcord.SlashOption(required=False, default=False, description="Would you like the reminders to ping the st, default is false"),
+                  ping_players: bool = nextcord.SlashOption(required=False, default=True, description="Would you like the reminders to ping the players, default is true"),):
         game_channel = self.helper.get_game_channel(game_number)
         if game_channel is None:
-            await utility.deny_command(ctx, "The first argument must be a valid game number")
+            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
-        event = "Whispers close"
-        try:
-            times = [parse_hours(time) for time in args[1:]]
-        except ValueError:
-            event = args[1]
-            try:
-                times = [parse_hours(time) for time in args[2:]]
-            except ValueError as e:
-                await utility.deny_command(ctx, e.args[0])  # looks like: "could not convert string to float: 'bla'"
-                return
-            if len(times) == 0:
-                await utility.deny_command(ctx, "At least one reminder time is required")
-                return
-        # set the reminders
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            mention = None
-            if not no_player_ping:
+
+        if self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer(ephemeral=True)
+            split_times = input_times.split(",")
+            times = []
+            for time in split_times:
+                try:
+                    times.append(parse_hours(time.strip()))
+                except ValueError:
+                    try:
+                        for t in time.strip().split():
+                            times.append(parse_hours(t))
+                    except ValueError:
+                        await interaction.followup.send(f"Could not parse time: {t.strip()}")
+                        await utility.deny_app_command(interaction, utility.DenialReason.InvalidReminderTime)
+                        return
+            mention = ""
+            if ping_players:
                 game_role = self.helper.get_game_role(game_number)
-                mention = game_role.mention
+                mention = game_role.mention + " "
             if ping_st:
                 st_role = self.helper.get_st_role(game_number)
-                mention = st_role.mention if mention is None else f"{st_role.mention} {mention}"
+                mention += st_role.mention + " "
+            text = mention + message
             times.sort()
             end_of_countdown = utcnow() + datetime.timedelta(hours=times[-1])
             for time in times:
-                reminder = Reminder.create(utcnow() + datetime.timedelta(hours=time), game_channel.id, mention, event,
+                reminder = Reminder.create(utcnow() + datetime.timedelta(hours=time), game_channel.id, text,
                                            end_of_countdown)
                 self.store.reminders.append(reminder)
                 logging.debug(f"Added reminder in game {game_number}: {reminder}")
             self.store.reminders.sort()
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send(f"Reminders set, ending {times[-1]} hours from now")
         else:
-            await utility.deny_command(ctx, "You must be an ST to use this command")
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
-    @commands.command()
-    async def DeleteReminders(self, ctx: commands.Context, game_number: str):
-        """Deletes all reminders for the given game number."""
-        game_channel_id = self.helper.get_game_channel(game_number).id
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            self.store.reminders = [reminder for reminder in self.store.reminders if reminder.channel != game_channel_id]
+    @reminders.subcommand(name="delete", description="Deletes the reminders for the given game number.")
+    async def delete(self, interaction: nextcord.Interaction, 
+                     game_number: str = nextcord.SlashOption(required=True)):
+        game_channel = self.helper.get_game_channel(game_number)
+        if game_channel is None:
+            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            return
+        
+        if self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer(ephemeral=True)
+            self.store.reminders = [reminder for reminder in self.store.reminders if reminder.channel != game_channel.id]
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Reminders deleted")
         else:
-            await utility.deny_command(ctx, "You must be an ST to use this command")
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
-    @commands.command()
-    async def ShowReminders(self, ctx: commands.Context, game_number: str):
-        """Shows all reminders for the given game number."""
-        game_channel_id = self.helper.get_game_channel(game_number).id
-        await utility.start_processing(ctx)
-        reminders = [reminder for reminder in self.store.reminders if reminder.channel == game_channel_id]
+    @reminders.subcommand(name="show", description="Shows all reminders for the given game number.")
+    async def show(self, interaction: nextcord.Interaction, 
+                   game_number: str = nextcord.SlashOption(required=True)):
+        game_channel = self.helper.get_game_channel(game_number)
+        if game_channel is None:
+            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            return
+        
+        await interaction.response.defer(ephemeral=True)
+        reminders = [reminder for reminder in self.store.reminders if reminder.channel == game_channel.id]
         if len(reminders) == 0:
-            await utility.dm_user(ctx.author, "There are no reminders for this game")
+            await interaction.followup.send("There are no reminders for this game")
         else:
-            await utility.dm_user(ctx.author, "\n".join([reminder.explain() for reminder in reminders]))
-        await utility.finish_processing(ctx)
+            await interaction.followup.send("\n".join([reminder.explain() for reminder in reminders]))
 
     @tasks.loop(seconds=15)
     async def check_reminders(self):
