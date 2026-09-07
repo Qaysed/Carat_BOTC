@@ -56,7 +56,7 @@ class Reminders(commands.Cog):
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
 
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             split_times = input_times.split(",")
             times = []
@@ -100,7 +100,7 @@ class Reminders(commands.Cog):
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
         
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             self.store.reminders = [reminder for reminder in self.store.reminders if reminder.channel != game_channel.id]
             self.store.save()

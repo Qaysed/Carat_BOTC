@@ -115,6 +115,7 @@ class Archive(commands.Cog):
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NotAThread)
 
+    # TODO: enable command in archive servers, load archive servers from .env
     @archive.subcommand(name="claim_role", description="Claims your unique role for this server, this allows you to view threads of games you STed.")
     async def claim_role(self, interaction: nextcord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -139,7 +140,7 @@ class Archive(commands.Cog):
             await utility.deny_app_command(interaction, utility.DenialReason.NotATextChannel)
             return 
         # Ivy Access
-        if self.helper.authorize_mod_command(interaction.user) or interaction.user.id == ivy_id:
+        if await self.helper.authorize_mod_command(interaction.user) or interaction.user.id == ivy_id:
             await interaction.response.defer()
 
             channel_to_archive = interaction.channel

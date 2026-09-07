@@ -32,7 +32,7 @@ class Users(commands.Cog):
         if game not in utility.PotentialGames:
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
-        if self.helper.authorize_st_command(interaction.user, game):
+        if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
             player_role = self.helper.get_game_role(game)
             if not player_role:
@@ -71,7 +71,7 @@ class Users(commands.Cog):
         if game not in utility.PotentialGames:
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
-        if self.helper.authorize_st_command(interaction.user, game):
+        if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
             player_role = self.helper.get_game_role(game)
             if not player_role:
@@ -113,7 +113,7 @@ class Users(commands.Cog):
                          k12: nextcord.Member = nextcord.SlashOption(required=False)):
         if game not in utility.PotentialGames:
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
-        if self.helper.authorize_st_command(interaction.user, game):
+        if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
             kibitz_role = self.helper.get_kibitz_role(game)
             kibitzers = [k for k in [k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12] if k and kibitz_role not in k.roles]
@@ -150,7 +150,7 @@ class Users(commands.Cog):
         if game not in utility.PotentialGames:
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
-        if self.helper.authorize_st_command(interaction.user, game):
+        if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
             kibitz_role = self.helper.get_kibitz_role(game)
             if not kibitz_role:

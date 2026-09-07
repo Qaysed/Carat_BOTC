@@ -36,7 +36,7 @@ class Grimoire(commands.Cog):
         if game_channel is None:
             await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
             return
-        if len(st_role.members) == 0 or self.helper.authorize_mod_command(interaction.user):
+        if len(st_role.members) == 0 or await self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer()
             await interaction.user.add_roles(st_role)
             await interaction.followup.send("You are now the current ST for game " + game_number, ephemeral=True)
@@ -72,7 +72,7 @@ class Grimoire(commands.Cog):
         if not isinstance(interaction.user, nextcord.Member):
             await utility.deny_app_command(interaction, utility.DenialReason.MemberCommand)
             return
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             st_role = self.helper.get_st_role(game_number)
             if st_role is None:
@@ -91,7 +91,7 @@ class Grimoire(commands.Cog):
     @grimoire.subcommand(name="drop", description="Removes the ST role for the game from you.")
     async def grimoire_drop(self, interaction: nextcord.Interaction, 
                            game_number: str = nextcord.SlashOption(required=True, name="game_number")):
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             st_role = self.helper.get_st_role(game_number)
             await interaction.user.remove_roles(st_role)
@@ -108,7 +108,7 @@ class Grimoire(commands.Cog):
     async def grimoire_share(self, interaction: nextcord.Interaction, 
                              game_number: str = nextcord.SlashOption(required=True, name="game_number"), 
                              member: nextcord.Member = nextcord.SlashOption(required=True, name="member")):
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             await member.add_roles(self.helper.get_st_role(game_number))
             if game_number in self.townsquares.town_squares:

@@ -47,7 +47,9 @@ class DenialReason(Enum):
     NotATextChannel = f"{SweatSmileEmoji} This command can only be used in a text channel"
     NotArchiveServer = f"{SweatSmileEmoji} This command can be used in an registered archive server"
 
-def authorize_dev_command(author: Union[nextcord.Member, nextcord.User]) -> bool:
+def authorize_dev_command(author: Union[nextcord.Member, nextcord.User, None]) -> bool:
+    if author is None: 
+        return False
     return author.id in DeveloperIds
 
 def get_channel_type(channel_type: str) -> Optional[str]:
@@ -81,12 +83,12 @@ async def deny_command(ctx: commands.Context, reason: Optional[str]):
     else:
         logging.info(f"The {ctx.command.name} command was stopped against {ctx.author.name}")
 
-async def deny_app_command(interaction: nextcord.Interaction, reason: DenialReason):
+async def deny_app_command(interaction: nextcord.Interaction, reason: Union[DenialReason, str]):
     if interaction.application_command is None:
         raise ValueError("interaction.application_command is None")
     if interaction.user is None:
         raise ValueError("interaction.user is None")
-    reason_str = reason.value
+    reason_str = reason.value if isinstance(reason, DenialReason) else reason
     logging.info(f"The {interaction.application_command.name} command by {interaction.user.name} was stopped. Reason: {reason_str}")
     if interaction.response.is_done():
         await interaction.followup.send(reason_str, ephemeral=True)
@@ -206,9 +208,15 @@ class Helper:
             logging.warning(f"Could not find kibitz role for game {number}")
         return role
 
-    def authorize_st_command(self, author: Union[nextcord.Member, nextcord.User], game_number: str):
+    async def fetch_member(self, user_id: int) -> Optional[nextcord.Member]:
+        try:
+            return await self.Guild.fetch_member(user_id)
+        except nextcord.NotFound:
+            return None
+
+    async def authorize_st_command(self, author: Union[nextcord.Member, nextcord.User], game_number: str):
         if isinstance(author, nextcord.User):
-            member = get(self.Guild.members, id=author.id)
+            member = await self.fetch_member(author.id)
             if member is None:
                 logging.warning("Non guild member attempting to use ST command")
                 return False
@@ -218,9 +226,9 @@ class Helper:
             or (self.get_st_role(game_number) in member.roles) \
             or (member.id == self.OwnerId)
 
-    def authorize_mod_command(self, author: Union[nextcord.Member, nextcord.User]):
+    async def authorize_mod_command(self, author: Union[nextcord.Member, nextcord.User]):
         if isinstance(author, nextcord.User):
-            member = get(self.Guild.members, id=author.id)
+            member = await self.fetch_member(author.id)
             if member is None:
                 logging.warning("Non guild member attempting to use mod command")
                 return False

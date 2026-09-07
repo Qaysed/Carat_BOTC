@@ -1,15 +1,20 @@
 import io
 import logging
 import os
+import re
 import sys
+import tempfile
 import traceback
 from typing import Optional, List
 
 import nextcord
 import requests
 from dotenv import load_dotenv
+from nextcord import Interaction, SlashOption
 from nextcord.ext import commands
-from nextcord.ext.commands import DefaultHelpCommand, CommandError
+from nextcord.ext.commands import CommandError
+from nextcord.utils import utcnow
+
 
 import utility
 from State import DataLayer
@@ -22,6 +27,11 @@ LogLevelMapping = {'DEBUG': logging.DEBUG,
                    'WARNING': logging.WARNING,
                    'ERROR': logging.ERROR,
                    'CRITICAL': logging.CRITICAL}
+
+LogHeaderPattern = re.compile(
+    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - "
+    r"(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL): "
+)
 
 logging.basicConfig(filename=LogFile, filemode="w",
                     format="%(asctime)s - %(levelname)s: %(message)s",
@@ -41,17 +51,17 @@ except Exception as e:
     sys.exit()
 
 
-intents = nextcord.Intents.all()
+intents = nextcord.Intents.default()
+intents.message_content = True
+intents.members = True
 allowedMentions = nextcord.AllowedMentions.all()
 allowedMentions.everyone = False
-help_command = DefaultHelpCommand(verify_checks=False, dm_help=None, dm_help_threshold=600)
 
+# TDOD: remove prefix once all commands are gone
 bot = commands.Bot(command_prefix=">",
                    case_insensitive=True,
                    intents=intents,
                    allowed_mentions=allowedMentions,
-                   activity=nextcord.Game(">HelpMe or >help"),
-                   help_command=help_command,
                    owner_id=owner_id,
                    default_guild_ids=[guild_id])
 
@@ -100,45 +110,45 @@ async def on_command_error(ctx: commands.Context, error: CommandError):
         logging.exception(f"Ignoring exception in command {ctx.command}:\n{traceback_text}")
 
 
-def get_level(line: str):
-    line_without_time = line.split(" - ")[1]
-    line_without_message = line_without_time.split(": ")[0]
-    return LogLevelMapping[line_without_message.strip().upper()]
+def get_level(line: str) -> Optional[int]:
+    match = LogHeaderPattern.match(line)
+    if match is None:
+        return None
+    return LogLevelMapping[match["level"]]
 
 
-@bot.command()
-async def SendLogs(ctx: commands.Context, limit: int, level: Optional[str] = "ERROR", filter_string: Optional[str] = None):
-    """Sends a number of the most recent log events as a DM. The number is given by limit. Events are filtered by
-    logging level. Restricted to developers."""
-    if level.upper() not in LogLevelMapping:
-        await utility.deny_command(ctx, "Not a valid logging level")
-        return
-    if ctx.author.id == owner_id or \
-            (utility.authorize_dev_command(ctx.author) and level.upper() in ["WARNING", "ERROR", "CRITICAL"]):
-        log_level = LogLevelMapping[level.upper()]
-        await utility.start_processing(ctx)
+@bot.slash_command(name="send_logs", description="Send Carat program logs. Developer only")
+async def SendLogs(interaction: Interaction, 
+                   limit: int = SlashOption(name="number_of_lines"), 
+                   level: int = SlashOption(name="log_level", 
+                                            choices={"ERROR": logging.ERROR, "WARNING": logging.WARN, "INFO": logging.INFO, "DEBUG": logging.DEBUG}, 
+                                            required=False, 
+                                            default=logging.ERROR), 
+                   filter_string: str = SlashOption(name="filter", required=False)):
+    await interaction.response.defer(ephemeral=True)
+    if interaction.user.id == owner_id or \
+            (utility.authorize_dev_command(interaction.user) and level > logging.DEBUG):
         with open(LogFile, "r") as logs:
             lines = logs.readlines()
         items = []
+        include_current_entry = False
         for line in lines:
-            try:
-                level = get_level(line)
-                if level >= log_level:
+            item_level = get_level(line)
+            if item_level is not None:
+                include_current_entry = item_level >= level
+                if include_current_entry:
                     items.append(line)
-            except (KeyError, IndexError):
-                # exception traces occupy several lines, and for all but the first get_level should fail
-                if level >= log_level:
-                    items[-1] += "\n" + line
+            elif include_current_entry:
+                items[-1] += line
         if filter_string is not None:
             items = [item for item in items if filter_string.lower() in item.lower()]
         if limit < len(items):
             items = items[-limit:]
-        bytes_data = io.BytesIO("\n".join(items).encode("utf-8"))
-        await ctx.author.send("Logs", file=nextcord.File(bytes_data, f"Carat_{log_level}_{limit}.log"))
-        await utility.finish_processing(ctx)
+        bytes_data = io.BytesIO("".join(items).encode("utf-8"))
+        await interaction.followup.send("Logs", file=nextcord.File(bytes_data, f"Carat_{level}_{limit}_{utcnow().isoformat()}.log"), ephemeral=True)
     else:
-        await utility.deny_command(ctx, "You lack permission for this command")
-        logging.warning(f"{ctx.author.display_name} (id: {ctx.author.id}) attempted to access Carat's logs")
+        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        logging.warning(f"{interaction.user.display_name} (id: {interaction.user.id}) attempted to access Carat's logs")
 
 
 def get_repo_info(sub_path: str) -> Optional[List]:
@@ -171,97 +181,111 @@ def download_file(url, local_directory, local_filename):
     return True
 
 
-@bot.command()
-@commands.is_owner()
-async def ReloadCogs(ctx: commands.Context):
-    """Loads newest version of cogs from GitHub repository. Restricted to bot owner"""
-
+@bot.slash_command(name="reload_cogs", description="Gets current versions of the extension files and reloads them")
+async def ReloadCogs(interaction: Interaction):
+    if not await bot.is_owner(interaction.user):
+        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        return
+    await interaction.response.defer(ephemeral=True)
     logging.warning("Starting the ReloadCogs process")
     logging.info("Current cogs: " + ", ".join(bot.cogs.keys()))
-    await utility.start_processing(ctx)
-    cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
-    for cog in cog_paths:
-        logging.info(f"Unloading {cog}")
-        if cog[5:] in bot.cogs:
-            bot.unload_extension(cog)
-    logging.info("Unloaded all cogs in cog directory. Remaining cogs: " + ", ".join(bot.cogs.keys()))
-    await utility.dm_user(ctx.author, "Unloaded cogs: " + ", ".join([c[5:] for c in cog_paths]))
     logging.info("Downloading cogs list from repository")
     cogs_contents = get_repo_info("/Cogs")
     if cogs_contents is None:
-        logging.warning("Reloading old versions")
-        await utility.deny_command(ctx, "Could not connect to GitHub")
-        load_extensions(cog_paths)
-        await utility.dm_user(ctx.author, "reloaded original cogs")
-        logging.warning("Ending the process. Currently loaded cogs: " + ", ".join(bot.cogs.keys()))
+        await interaction.followup.send("Could not download cogs from GitHub; no changes were made.", ephemeral=True)
         return
-    for file in cogs_contents:
-        if file["name"].endswith(".py"):
-            logging.info(f"Downloading {file['name']} from repository")
-            if not download_file(file["download_url"], "Cogs", file["name"]):
-                logging.warning("Reloading cogs from current files")
-                await utility.deny_command(ctx, "Could not connect to GitHub")
-                cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
-                logging.info("Loading cogs: " + ", ".join(cog_paths))
-                load_extensions(cog_paths)
-                await utility.dm_user(ctx.author, "Loaded cogs from currently existing files")
-                logging.warning("Ending the process. Currently loaded cogs: " + ", ".join(bot.cogs.keys()))
-                return
-    # TODO: better logic
     logging.info("Downloading data-layer modules from repository")
     data_contents = get_repo_info("/State")
     if data_contents is None:
-        await utility.deny_command(ctx, "Could not download the data layer; reloading existing files")
-    else:
-        os.makedirs("State", exist_ok=True)
-        for file in data_contents:
-            if file["name"].endswith(".py") and not download_file(file["download_url"], "State", file["name"]):
-                await utility.deny_command(ctx, "Could not download the data layer; reloading existing files")
+        await interaction.followup.send("Could not download the data layer; no changes were made.", ephemeral=True)
+        return
+    with tempfile.TemporaryDirectory(prefix=".carat-cogs-", dir=".") as staging_directory:
+        staged_directories = (("Cogs", cogs_contents), ("State", data_contents))
+        download_failed = False
+        for directory, contents in staged_directories:
+            staged_directory = os.path.join(staging_directory, directory)
+            os.makedirs(staged_directory)
+            for file in contents:
+                if file["name"].endswith(".py"):
+                    logging.info(f"Downloading {directory}/{file['name']} from repository")
+                    if not download_file(file["download_url"], staged_directory, file["name"]):
+                        download_failed = True
+                        break
+            if download_failed:
                 break
+
+        if download_failed:
+            logging.warning("A download failed; keeping existing cogs and data-layer files")
+            await interaction.followup.send("Could not download all files from GitHub; no changes were made.", ephemeral=True)
+            return
+
+        cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
+        for cog in cog_paths:
+            logging.info(f"Unloading {cog}")
+            if cog[5:] in bot.cogs:
+                bot.unload_extension(cog)
+        logging.info("Unloaded all cogs in cog directory. Remaining cogs: " + ", ".join(bot.cogs.keys()))
+        await interaction.followup.send("Unloaded cogs: " + ", ".join([c[5:] for c in cog_paths]), ephemeral=True)
+
+        for directory, _ in staged_directories:
+            os.makedirs(directory, exist_ok=True)
+            staged_directory = os.path.join(staging_directory, directory)
+            staged_filenames = set(os.listdir(staged_directory))
+            for filename in os.listdir(directory):
+                local_file = os.path.join(directory, filename)
+                if filename.endswith(".py") and filename not in staged_filenames and os.path.isfile(local_file):
+                    logging.info(f"Removing {directory}/{filename}; it is no longer in the repository")
+                    os.remove(local_file)
+            for filename in staged_filenames:
+                os.replace(os.path.join(staged_directory, filename), os.path.join(directory, filename))
+
     new_cog_paths = ["Cogs." + os.path.splitext(file)[0] for file in os.listdir("Cogs") if file.endswith(".py")]
     logging.info("Now loading new cogs from files: " + ", ".join(new_cog_paths))
     load_extensions(new_cog_paths)
     await bot.sync_all_application_commands()
     logging.warning("Cogs successfully loaded. Currently loaded cogs: " + ", ".join(bot.cogs.keys()))
-    await utility.dm_user(ctx.author, "Loaded new cogs: " + ", ".join([c[5:] for c in new_cog_paths]))
-    await utility.finish_processing(ctx)
+    await interaction.followup.send("Loaded new cogs: " + ", ".join([c[5:] for c in new_cog_paths]), ephemeral=True)
 
 
-@bot.command()
-@commands.is_owner()
-async def ReloadMainFiles(ctx: commands.Context):
-    """Loads newest version of main files (Carat.py, utility.py) from GitHub repository. Restricted to bot owner"""
+@bot.slash_command(name="reload_main_files", description="Downloads updated Carat.py and utility.py from GitHub.")
+async def ReloadMainFiles(interaction: Interaction):
+    if not await bot.is_owner(interaction.user):
+        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        return
+    await interaction.response.defer(ephemeral=True)
     logging.warning("Attempting to update Carat.py and utility.py")
     repo_contents = get_repo_info("/")
     if repo_contents is None:
-        await utility.deny_command(ctx, "Could not connect to GitHub")
+        await interaction.followup.send("Could not connect to GitHub", ephemeral=True)
         return
     carat_file_url = next((file['download_url'] for file in repo_contents if file['name'] == "Carat.py"), None)
     utility_file_url = next((file['download_url'] for file in repo_contents if file['name'] == "utility.py"), None)
     if carat_file_url is None or utility_file_url is None:
         logging.error("Could not find files in repository")
-        await utility.deny_command(ctx, "Could not find files in repository")
+        await interaction.followup.send("Could not find files in repository", ephemeral=True)
         return
     if download_file(carat_file_url, ".", "Carat_UPDATE.py"):
         if download_file(utility_file_url, ".", "utility_UPDATE.py"):
+            await interaction.followup.send("New files downloaded. Restarting...", ephemeral=True)
             logging.warning("New files downloaded.Stopping Carat to restart new version")
             await bot.close()
         else:
             os.remove("Carat_UPDATE.py")  # Clean up
-            await utility.deny_command(ctx, "Could not connect to GitHub")
+            await interaction.followup.send("Could not connect to GitHub", ephemeral=True)
     else:
-        await utility.deny_command(ctx, "Could not connect to GitHub")
+        await interaction.followup.send("Could not connect to GitHub", ephemeral=True)
 
 
-@bot.command()
-async def Restart(ctx: commands.Context):
-    if utility.authorize_dev_command(ctx.author):
+@bot.slash_command(name="restart")
+async def Restart(interaction: Interaction):
+    if utility.authorize_dev_command(interaction.user):
+        await interaction.send("Restarting...", ephemeral=True)
         logging.warning("Trying to restart Carat...")
         # bot.close() finishes execution of bot.run(), so Carat terminates and is restarted by the loop in AutoRestart
         await bot.close()
     else:
-        await utility.deny_command(ctx, "You lack permission for this command")
-        logging.warning(f"{ctx.author.display_name} (id: {ctx.author.id}) attempted to restart Carat")
+        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        logging.warning(f"{interaction.user.display_name} (id: {interaction.user.id}) attempted to restart Carat")
 
 
 bot.run(token)

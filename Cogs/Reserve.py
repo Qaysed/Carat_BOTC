@@ -165,15 +165,15 @@ async def create_channel(owner: int, helper: utility.Helper,
     else:
         await kibitz_channel.edit(reason=reason, overwrites=kibitz_overwrites)
     # assign roles
-    st = get(helper.Guild.members, id=owner)
+    st = await helper.fetch_member(owner)
     await st.add_roles(st_role)
     co_sts = [] if co_sts is None else co_sts
-    co_sts = [get(helper.Guild.members, id=st_id) for st_id in co_sts]
+    co_sts = [await helper.fetch_member(st_id) for st_id in co_sts]
     for co_st in co_sts:
         if co_st is not None:
             await co_st.add_roles(st_role)
     players = [] if players is None else players
-    players = [(p_id, get(helper.Guild.members, id=p_id)) for p_id in players]
+    players = [(p_id, await helper.fetch_member(p_id)) for p_id in players]
     for p_id, player in players:
         if player is None:
             game_channel.send(f"Warning: Player with ID {p_id} could not be found")
@@ -193,9 +193,9 @@ async def switch_to_queue(queue_store: QueueStore, helper: utility.Helper, entry
     await update_queue_message(queue_store.queues[channel_type], helper)
 
 
-def signup_embed(entry: RSVPEntry, helper: utility.Helper) -> nextcord.Embed:
-    owner = get(helper.Guild.members, id=entry.owner)
-    co_sts = [get(helper.Guild.members, id=st_id).mention for st_id in entry.co_sts]
+async def signup_embed(entry: RSVPEntry, helper: utility.Helper) -> nextcord.Embed:
+    owner = await helper.fetch_member(entry.owner)
+    co_sts = [(await helper.fetch_member(st_id)).mention for st_id in entry.co_sts]
     info = f"Ran by {owner.mention}"
     if len(co_sts) > 0:
         info += "with " + ", ".join(co_sts)
@@ -207,7 +207,7 @@ def signup_embed(entry: RSVPEntry, helper: utility.Helper) -> nextcord.Embed:
                            color=0xff0000)
     for i in range(entry.max_players):
         if i < len(entry.players):
-            player = get(helper.Guild.members, id=entry.players[i])
+            player = await helper.fetch_member(entry.players[i])
             name = player.display_name
             embed.add_field(name=str(i + 1) + ". " + str(name),
                             value=f"{player.mention} has signed up",
@@ -286,7 +286,7 @@ class Reserve(commands.Cog):
             entry.max_players = max_players
             entry.script = script
             self.store.save()
-            embed = signup_embed(entry, self.helper)
+            embed = await signup_embed(entry, self.helper)
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(embed=embed, view=PreSignupView(self, self.helper, entry))
             await interaction.followup.send(f"Sign up list sent to your forum post")
@@ -360,10 +360,10 @@ class Reserve(commands.Cog):
         if self.helper.Guild.icon:
             embed.set_thumbnail(self.helper.Guild.icon.url)
         for entry in upcoming:
-            owner = get(self.helper.Guild.members, id=entry.owner)
+            owner = await self.helper.fetch_member(entry.owner)
             if owner is None:
                 continue
-            co_sts = [get(self.helper.Guild.members, id=co_st) for co_st in entry.co_sts]
+            co_sts = [await self.helper.fetch_member(co_st) for co_st in entry.co_sts]
             co_st_names = [co_st.display_name for co_st in co_sts if co_st is not None]
             name = f"{owner.display_name} running {entry.script}" if entry.script != "TBA" else f"{owner.display_name}"
             description = f"Starting {entry.date}\n{len(entry.players)}/{entry.min_players} players signed up"
@@ -378,7 +378,7 @@ class Reserve(commands.Cog):
     @reserve.subcommand(name="create_game", description="Creates an 'r' channel game for a given user. Moderator only!")
     async def create_game(self, interaction: nextcord.Interaction, 
                           st: nextcord.Member = nextcord.SlashOption(required=True)):
-        if self.helper.authorize_mod_command(interaction.user):
+        if await self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer()
             if st.id in self.entries:
                 entry = self.entries[st.id]
@@ -398,7 +398,7 @@ class Reserve(commands.Cog):
     @reserve.subcommand(name="remove_reservation", description="Removes the reservation of the given user. Moderator only!")
     async def remove_reservation(self, interaction: nextcord.Interaction, 
                                  st: nextcord.Member = nextcord.SlashOption(required=True)):
-        if self.helper.authorize_mod_command(interaction.user):
+        if await self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             if st.id in self.entries:
                 thread = self.entries[st.id].thread
@@ -424,7 +424,7 @@ class Reserve(commands.Cog):
     async def change_start_date(self, interaction: nextcord.Interaction, 
                                 st: nextcord.Member = nextcord.SlashOption(required=True), 
                                 new_date: str = nextcord.SlashOption(required=True, description="Accepted date formats are YYYY-MM-DD, MM-DD or the number of days until the date.")):
-        if self.helper.authorize_mod_command(interaction.user):
+        if await self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             start_day = parse_date(new_date)
             if start_day is None:
@@ -453,7 +453,7 @@ class Reserve(commands.Cog):
     async def change_player_minimum(self, interaction: nextcord.Interaction, 
                                     st: nextcord.Member = nextcord.SlashOption(required=True), 
                                     new_min: int = nextcord.SlashOption(required=True, min_value=0)):
-        if self.helper.authorize_mod_command(interaction.user):
+        if await self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             if st.id in self.entries:
                 entry = self.entries[st.id]
@@ -484,7 +484,7 @@ class Reserve(commands.Cog):
     async def remove_player(self, interaction: nextcord.Interaction, 
                             player: nextcord.Member = nextcord.SlashOption(required=True), 
                             st: nextcord.Member = nextcord.SlashOption(required=True)):
-        if self.helper.authorize_mod_command(interaction.user):
+        if await self.helper.authorize_mod_command(interaction.user):
             if st.id not in self.entries:
                 await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
                 return
@@ -512,7 +512,7 @@ class Reserve(commands.Cog):
             queue_cog = self.queue_store
         for entry in to_announce:
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
-            owner = get(self.helper.Guild.members, id=entry.owner)
+            owner = await self.helper.fetch_member(entry.owner)
             if owner is None:
                 await thread.send("Reserved date has arrived, but owner could not be found")
                 logging.warning(f"r-game thread owner {entry.owner} for thread {entry.thread} could not be found")
@@ -565,9 +565,9 @@ class PreSignupView(nextcord.ui.View):
         else:
             self.entry.players.append(interaction.user.id)
             self.cog.store.save()
-            await interaction.message.edit(embed=signup_embed(self.entry, self.helper), view=self)
+            await interaction.message.edit(embed=await signup_embed(self.entry, self.helper), view=self)
             await interaction.send("You have signed up!", ephemeral=True)
-            owner = get(self.helper.Guild.members, id=self.entry.owner)
+            owner = await self.helper.fetch_member(self.entry.owner)
             await utility.dm_user(owner, f"{interaction.user.display_name} ({interaction.user.name}) has signed up for "
                                          f"your reserved {self.entry.script} game")
             await self.helper.log(f"{interaction.user.display_name} ({interaction.user.name}) has signed up for "
@@ -580,9 +580,9 @@ class PreSignupView(nextcord.ui.View):
         else:
             self.entry.players.remove(interaction.user.id)
             self.cog.store.save()
-            await interaction.message.edit(embed=signup_embed(self.entry, self.helper), view=self)
+            await interaction.message.edit(embed=await signup_embed(self.entry, self.helper), view=self)
             await interaction.send("You have left the reserved game!", ephemeral=True)
-            owner = get(self.helper.Guild.members, id=self.entry.owner)
+            owner = await self.helper.fetch_member(self.entry.owner)
             await utility.dm_user(owner, f"{interaction.user.display_name} ({interaction.user.name}) has left your "
                                          f"reserved {self.entry.script} game")
             await self.helper.log(f"{interaction.user.display_name} ({interaction.user.name}) has left"
@@ -591,7 +591,7 @@ class PreSignupView(nextcord.ui.View):
     @nextcord.ui.button(label="Refresh List", custom_id="Refresh_List_Command", style=nextcord.ButtonStyle.grey, emoji=refresh_emoji)
     async def refresh_pre_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.send(f"{refresh_emoji}Refreshing...", ephemeral=True)
-        await interaction.message.edit(embed=signup_embed(self.entry, self.helper), view=self)
+        await interaction.message.edit(embed=await signup_embed(self.entry, self.helper), view=self)
 
 
 class EnoughPlayersView(nextcord.ui.View):

@@ -17,7 +17,7 @@ class Game(commands.Cog):
     @nextcord.slash_command(name="open_kibitz", description="Manually opens the kibitz channel so anyone can view it.")
     async def open_kibitz(self, interaction: nextcord.Interaction, 
                          game_number: str = nextcord.SlashOption(required=True, name="game_number")):
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
@@ -35,7 +35,7 @@ class Game(commands.Cog):
     @nextcord.slash_command(name="close_kibitz", description="Manually closes the kibitz channel.")
     async def close_kibitz(self, interaction: nextcord.Interaction, 
                            game_number: str = nextcord.SlashOption(required=True, name="game_number")):
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
@@ -49,7 +49,7 @@ class Game(commands.Cog):
     @nextcord.slash_command(name="end_game", description="Opens kibitz and cleans up after the game. Use after the game is done.")
     async def end_game(self, interaction: nextcord.Interaction, 
                       game_number: str = nextcord.SlashOption(required=True, name="game_number")):
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer()
             kibitz_role = self.helper.get_kibitz_role(game_number)
             game_role = self.helper.get_game_role(game_number)
@@ -82,7 +82,7 @@ class Game(commands.Cog):
     async def archive_game(self, interaction: nextcord.Interaction, 
                            game_number: str = nextcord.SlashOption(required=True, name="game_number"),
                            archive_name: str = nextcord.SlashOption(required=True, name="archive_name")):
-        if self.helper.authorize_st_command(interaction.user, game_number):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
             st_role = self.helper.get_st_role(game_number)

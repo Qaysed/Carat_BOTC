@@ -24,8 +24,7 @@ clock_emoji = '\U0001f566'  # 🕦
 
 
 def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: Nomination,
-                       emoji: Dict[str, nextcord.PartialEmoji]) -> (
-        str, nextcord.Embed):
+                       emoji: Dict[str, nextcord.PartialEmoji], include_game_role_mention: bool = True) -> (str, nextcord.Embed):
     if town_square.vote_threshold == 0:
         votes_needed = ceil(len([player for player in town_square.players if not player.dead]) / 2)
     else:
@@ -33,7 +32,8 @@ def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: N
     players = reordered_players(nom, town_square)
     current_voter = next((player for player in players if player.can_vote and
                           nom.votes[player.id].vote not in [confirmed_yes_vote, confirmed_no_vote]), None)
-    content = f"{game_role.mention} {nom.nominator.alias} has nominated {nom.nominee.alias}.\n" \
+    game_role_mention = f"{game_role.mention} " if include_game_role_mention else ""
+    content = f"{game_role_mention}{nom.nominator.alias} has nominated {nom.nominee.alias}.\n" \
               f"Accusation: {nom.accusation}\n" \
               f"Defense: {nom.defense}\n" \
               f"Votes close {nom.deadline}. " \
@@ -93,14 +93,12 @@ class Townsquare(commands.Cog):
     helper: utility.Helper
     store: TownSquareStore
     emoji: Dict[str, nextcord.PartialEmoji]
-    vote_count_views: List[CountVoteView]
 
     def __init__(self, bot: commands.Bot, helper: utility.Helper, store: TownSquareStore):
         self.bot = bot
         self.helper = helper
         self.store = store
         self.emoji = {}
-        self.vote_count_views = []
         self.town_squares = self.store.town_squares
 
     async def load_emoji(self):
@@ -144,43 +142,56 @@ class Townsquare(commands.Cog):
         log_thread = get(kibitz.threads, id=self.town_squares[game_number].log_thread)
         await log_thread.send((format_dt(utcnow()) + ": " + message)[:2000])
 
-    async def update_nom_message(self, game_number: str, nom: Nomination):
-        game_role = self.helper.get_game_role(game_number)
-        content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji)
+    def get_nomination_thread(self, game_number: str) -> nextcord.Thread:
         game_channel = self.helper.get_game_channel(game_number)
-        nom_thread = get(game_channel.threads, id=self.town_squares[game_number].nomination_thread)
-        try:
-            nom_message = await nom_thread.fetch_message(nom.message)
-            await nom_message.edit(content=content, embed=embed)
-        except nextcord.HTTPException as e:
-            if e.code == 10008:  # Discord's 404
-                logging.error(f"Missing message for nomination of {nom.nominee.alias} in game {game_number}")
-                st_role = self.helper.get_st_role(game_number)
-                await self.log(game_number, f"{st_role.mention} Could not find the nomination message for the "
-                                            f"nomination of {nom.nominee.alias} to update it. Please close the "
-                                            f"nomination to prevent this happening again.")
-                return
-            else:
-                raise e
-        view = next((v for v in self.vote_count_views if v.nom == nom), None)
-        if view is not None:
-            await view.update_message()
-        logging.debug(f"Updated nomination for game {game_number}: {nom}")
+        return get(game_channel.threads, id=self.town_squares[game_number].nomination_thread)
 
-    def get_game_participant(self, game_number: str, identifier: str) -> Union[nextcord.Member, None]:
+    async def update_nom_message(self, game_number: str, nom: Nomination):
+        """Keep the original nomination announcement immutable after it is posted."""
+        logging.debug(f"Nomination state changed for game {game_number}: {nom}")
+
+    async def announce_vote(self, game_number: str, voter: Player, nom: Nomination, vote: str) -> None:
+        nom_thread = self.get_nomination_thread(game_number)
+        await nom_thread.send(f"**{voter.alias}** voted `{vote}` on **{nom.nominee.alias}**.")
+
+    async def announce_counted_vote(self, game_number: str, player: Player, nom: Nomination,
+                                    vote: str) -> None:
+        town_square = self.town_squares[game_number]
+        threshold = town_square.vote_threshold or ceil(
+            len([town_player for town_player in town_square.players if not town_player.dead]) / 2
+        )
+        count = 0
+        for current_vote in nom.votes.values():
+            if current_vote.vote != confirmed_yes_vote:
+                continue
+            value = 1
+            if current_vote.thief:
+                value *= -1
+            if current_vote.banshee:
+                value *= 2
+            if current_vote.bureaucrat:
+                value *= 3
+            count += value
+        vote_text = "yes" if vote == confirmed_yes_vote else "no"
+        nom_thread = self.get_nomination_thread(game_number)
+        await nom_thread.send(
+            f"**{player.alias}**'s vote on **{nom.nominee.alias}** was counted as {vote_text}. ({count}/{threshold})"
+        )
+
+    async def get_game_participant(self, game_number: str, identifier: str) -> Union[nextcord.Member, None]:
         participants = self.town_squares[game_number].players + self.town_squares[game_number].sts
         # handle explicit mentions
         if utility.is_mention(identifier):
-            member = get(self.helper.Guild.members, id=int(identifier[2:-1]))
+            member = await self.helper.fetch_member(int(identifier[2:-1]))
             if member is not None and member.id in [p.id for p in participants]:
                 return member
             else:
                 return None
         # check alternatives for identifying the player
         alias_matches = self.try_get_matching_player(participants, identifier, lambda p: p.alias)
-        display_names = {p.id: get(self.helper.Guild.members, id=p.id).display_name for p in participants}
+        display_names = {p.id: (await self.helper.fetch_member(p.id)).display_name for p in participants}
         display_name_matches = self.try_get_matching_player(participants, identifier, lambda p: display_names[p.id])
-        usernames = {p.id: get(self.helper.Guild.members, id=p.id).name for p in participants}
+        usernames = {p.id: (await self.helper.fetch_member(p.id)).name for p in participants}
         username_matches = self.try_get_matching_player(participants, identifier, lambda p: usernames[p.id])
         if len(alias_matches) == 1:
             target_id = alias_matches[0]
@@ -206,20 +217,7 @@ class Townsquare(commands.Cog):
             target_id = username_matches[0]
         else:
             return None
-        return get(self.helper.Guild.members, id=target_id)
-
-    # runs before each command - checks a town square exists
-    async def cog_check(self, ctx: commands.Context) -> bool:
-        if ctx.command.name in ["SetupTownSquare", "SubstitutePlayer"]:
-            return True
-        args = ctx.message.content.split(" ")
-        if len(args) < 2:
-            await utility.deny_command(ctx, "You must give a game number")
-        elif args[1] not in self.town_squares:
-            await utility.deny_command(ctx, "No town square for this game exists.")
-            return False
-        else:
-            return True
+        return await self.helper.fetch_member(target_id)
 
     @staticmethod
     def try_get_matching_player(player_list: List[Player], identifier: str, attribute: Callable[[Player], str]) \
@@ -237,15 +235,25 @@ class Townsquare(commands.Cog):
                     matches = [p.id for p in player_list if attribute(p) == identifier]
         return matches
 
-    @commands.command()
-    async def SetupTownSquare(self, ctx: commands.Context, game_number: str, players: commands.Greedy[nextcord.Member]):
-        """Creates the town square for the given game, with the given players.
-        Ping them in order of seating.
-        Overwrites information like nominations and votes if a town square existed already.
-        Use UpdateTownSquare if that is not what you want."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            player_list = [Player(p.id, p.display_name) for p in players]
+    @nextcord.slash_command(name="setup_town_square")
+    async def SetupTownSquare(self, interaction: nextcord.Interaction, game_number: str,
+                              player1: nextcord.Member, player2: Optional[nextcord.Member] = None,
+                              player3: Optional[nextcord.Member] = None, player4: Optional[nextcord.Member] = None,
+                              player5: Optional[nextcord.Member] = None, player6: Optional[nextcord.Member] = None,
+                              player7: Optional[nextcord.Member] = None, player8: Optional[nextcord.Member] = None,
+                              player9: Optional[nextcord.Member] = None, player10: Optional[nextcord.Member] = None,
+                              player11: Optional[nextcord.Member] = None, player12: Optional[nextcord.Member] = None,
+                              player13: Optional[nextcord.Member] = None, player14: Optional[nextcord.Member] = None,
+                              player15: Optional[nextcord.Member] = None, player16: Optional[nextcord.Member] = None,
+                              player17: Optional[nextcord.Member] = None, player18: Optional[nextcord.Member] = None,
+                              player19: Optional[nextcord.Member] = None, player20: Optional[nextcord.Member] = None):
+        players = [player for player in (player1, player2, player3, player4, player5, player6, player7,
+                                          player8, player9, player10, player11, player12, player13, player14,
+                                          player15, player16, player17, player18, player19, player20)
+                   if player is not None]
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
+            player_list = [Player(player.id, player.display_name) for player in players]
             st_list = [Player(st.id, st.display_name) for st in self.helper.get_st_role(game_number).members]
             self.town_squares[game_number] = TownSquare(player_list, st_list)
             kibitz = self.helper.get_kibitz_channel(game_number)
@@ -255,8 +263,8 @@ class Townsquare(commands.Cog):
                     auto_archive_duration=4320,
                     type=nextcord.ChannelType.private_thread)
             except nextcord.HTTPException:
-                old_logging_threads = [t for t in kibitz.threads if t.name == "Nomination & Vote Logging Thread"]
-                old_logging_threads.sort(key=lambda t: t.create_timestamp)
+                old_logging_threads = [thread for thread in kibitz.threads if thread.name == "Nomination & Vote Logging Thread"]
+                old_logging_threads.sort(key=lambda thread: thread.create_timestamp)
                 try:
                     await old_logging_threads[0].delete()
                     log_thread = await kibitz.create_thread(
@@ -265,31 +273,40 @@ class Townsquare(commands.Cog):
                         type=nextcord.ChannelType.private_thread)
                 except nextcord.HTTPException:
                     self.town_squares.pop(game_number)
-                    await utility.deny_command(ctx, "Failed to create logging thread.")
+                    await utility.deny_app_command(interaction, "Failed to create logging thread.")
                     return
             for st in self.helper.get_st_role(game_number).members:
                 await log_thread.add_user(st)
             self.town_squares[game_number].log_thread = log_thread.id
             await self.log(game_number, f"Town square created: {self.town_squares[game_number]}")
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the storyteller for this game")
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
-    @commands.command()
-    async def UpdateTownSquare(self, ctx: commands.Context, game_number: str,
-                               players: commands.Greedy[nextcord.Member]):
-        """Updates the town square for the given game, with the given players.
-        Ping them in order of seating.The difference to rerunning SetupTownSquare is that the latter will
-        lose information like aliases, spent deadvotes, and nominations. UpdateTownSquare will not. However, it will
-        stop nominations of or by players who are removed. If you need to prevent that, use SubstitutePlayer."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            new_player_list = [self.reuse_or_convert_player(p, game_number) for p in players]
-            removed_players = [p for p in self.town_squares[game_number].players if p not in new_player_list]
-            added_players = [p for p in new_player_list if p not in self.town_squares[game_number].players]
+    @nextcord.slash_command(name="update_town_square")
+    async def UpdateTownSquare(self, interaction: nextcord.Interaction, game_number: str,
+                               player1: nextcord.Member, player2: Optional[nextcord.Member] = None,
+                               player3: Optional[nextcord.Member] = None, player4: Optional[nextcord.Member] = None,
+                               player5: Optional[nextcord.Member] = None, player6: Optional[nextcord.Member] = None,
+                               player7: Optional[nextcord.Member] = None, player8: Optional[nextcord.Member] = None,
+                               player9: Optional[nextcord.Member] = None, player10: Optional[nextcord.Member] = None,
+                               player11: Optional[nextcord.Member] = None, player12: Optional[nextcord.Member] = None,
+                               player13: Optional[nextcord.Member] = None, player14: Optional[nextcord.Member] = None,
+                               player15: Optional[nextcord.Member] = None, player16: Optional[nextcord.Member] = None,
+                               player17: Optional[nextcord.Member] = None, player18: Optional[nextcord.Member] = None,
+                               player19: Optional[nextcord.Member] = None, player20: Optional[nextcord.Member] = None):
+        players = [player for player in (player1, player2, player3, player4, player5, player6, player7,
+                                          player8, player9, player10, player11, player12, player13, player14,
+                                          player15, player16, player17, player18, player19, player20)
+                   if player is not None]
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
+            new_player_list = [self.reuse_or_convert_player(player, game_number) for player in players]
+            removed_players = [player for player in self.town_squares[game_number].players if player not in new_player_list]
+            added_players = [player for player in new_player_list if player not in self.town_squares[game_number].players]
             self.town_squares[game_number].players = new_player_list
-            for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
+            for nom in [nomination for nomination in self.town_squares[game_number].nominations if not nomination.finished]:
                 if nom.nominator in removed_players or nom.nominee in removed_players:
                     nom.finished = True
                 for player in removed_players:
@@ -298,10 +315,10 @@ class Townsquare(commands.Cog):
                     nom.votes[player.id] = Vote(not_voted_yet)
                 await self.update_nom_message(game_number, nom)
             self.store.save()
-            await utility.finish_processing(ctx)
-            await self.log(game_number, f"{ctx.author.mention} has updated the town square: {new_player_list}")
+            await interaction.followup.send("Done", ephemeral=True)
+            await self.log(game_number, f"{interaction.user.mention} has updated the town square: {new_player_list}")
         else:
-            await utility.deny_command(ctx, "You are not the storyteller for this game")
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
     def reuse_or_convert_player(self, player: nextcord.Member, game_number: str) -> Player:
         existing_player = next((p for p in self.town_squares[game_number].players if p.id == player.id), None)
@@ -310,45 +327,45 @@ class Townsquare(commands.Cog):
         else:
             return Player(player.id, player.display_name)
 
-    @commands.command(aliases=["SubPlayer"])
-    async def SubstitutePlayer(self, ctx: commands.Context, game_number: str, player: Union[nextcord.Member, str],
+    @nextcord.slash_command(name="substitute_player")
+    async def SubstitutePlayer(self, interaction: nextcord.Interaction, game_number: str, player: nextcord.Member,
                                substitute: nextcord.Member):
         """Exchanges a player in the town square with a substitute.
         Transfers the position, status, nominations and votes of the exchanged player to the substitute, adds the
         substitute to all threads the exchanged player was in, and adds/removes the game role.
         Can be used without the town square."""
         if game_number not in self.town_squares:
-            await self.SubstitutePlayerNoTownsquare(ctx, game_number, player, substitute)
+            await self.SubstitutePlayerNoTownsquare(interaction, game_number, player, substitute)
             return
         player_left_server = False
         if not type(player) == nextcord.Member:
             player = next((p for p in self.town_squares[game_number].players if str(p.id) == player or 
                            p.alias == player), None)
             if player is None:
-                await utility.deny_command(ctx,
+                await utility.deny_app_command(interaction,
                 "Player could not be determined. Please mention the player or input their user ID or alias.")
                 return
-            current_player = get(self.helper.Guild.members, id=player.id)
+            current_player = await self.helper.fetch_member(player.id)
             if current_player == None:
                 player_left_server = True
             else:
                 player = current_player
         if player_left_server:
-            await self.SubstitutePlayerLeftServer(ctx, game_number, player, substitute)
+            await self.SubstitutePlayerLeftServer(interaction, game_number, player, substitute)
             return
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             player_list = self.town_squares[game_number].players
             current_player = next((p for p in player_list if p.id == player.id), None)
             substitute_existing_player = next((p for p in player_list if p.id == substitute.id), None)
             if substitute_existing_player is not None:
-                await utility.deny_command(ctx, f"{substitute.display_name} is already a player.")
+                await utility.deny_app_command(interaction, f"{substitute.display_name} is already a player.")
                 return
             if current_player is None:
                 st_list = self.town_squares[game_number].sts
                 current_st = next((st for st in st_list if st.id == player.id), None)
                 if not current_st:
-                    await utility.deny_command(ctx, f"{player.display_name} is not a participant.")
+                    await utility.deny_app_command(interaction, f"{player.display_name} is not a participant.")
                     return
                 current_st.id = substitute.id
                 current_st.alias = substitute.display_name
@@ -367,26 +384,26 @@ class Townsquare(commands.Cog):
                 for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
                     nom.votes[substitute.id] = nom.votes.pop(player.id)
                     await self.update_nom_message(game_number, nom)
-            await self.log(game_number, f"{ctx.author.mention} has substituted {player.display_name} with "
+            await self.log(game_number, f"{interaction.user.mention} has substituted {player.display_name} with "
                                         f"{substitute.display_name}")
             logging.debug(f"Substituted {player} with {substitute} in game {game_number} - "
                           f"current town square: {self.town_squares[game_number]}")
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the storyteller for this game")
+            await utility.deny_app_command(interaction, "You are not the storyteller for this game")
 
-    async def SubstitutePlayerNoTownsquare(self, ctx: commands.Context, game_number: str, player: nextcord.Member,
+    async def SubstitutePlayerNoTownsquare(self, interaction: nextcord.Interaction, game_number: str, player: nextcord.Member,
                                            substitute: nextcord.Member):
         game_role = self.helper.get_game_role(game_number)
         if game_role not in player.roles:
-            await utility.deny_command(ctx, f"{player.display_name} is not a player.")
+            await utility.deny_app_command(interaction, f"{player.display_name} is not a player.")
             return
         elif game_role in substitute.roles:
-            await utility.deny_command(ctx, f"{substitute.display_name} is already a player.")
+            await utility.deny_app_command(interaction, f"{substitute.display_name} is already a player.")
             return
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             await player.remove_roles(game_role, reason="substituted out")
             await substitute.add_roles(game_role, reason="substituted in")
             game_channel = self.helper.get_game_channel(game_number)
@@ -397,18 +414,18 @@ class Townsquare(commands.Cog):
                     await asyncio.sleep(10)
             logging.debug(f"Substituted {player} with {substitute} in game {game_number}")
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the storyteller for this game")
+            await utility.deny_app_command(interaction, "You are not the storyteller for this game")
 
-    async def SubstitutePlayerLeftServer(self, ctx: commands.Context, game_number: str, player: Player,
+    async def SubstitutePlayerLeftServer(self, interaction: nextcord.Interaction, game_number: str, player: Player,
                                          substitute: nextcord.Member):
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             player_list = self.town_squares[game_number].players
             substitute_existing_player = next((p for p in player_list if p.id == substitute.id), None)
             if substitute_existing_player is not None:
-                await utility.deny_command(ctx, f"{substitute.display_name} is already a player.")
+                await utility.deny_app_command(interaction, f"{substitute.display_name} is already a player.")
                 return
             else:
                 game_role = self.helper.get_game_role(game_number)
@@ -420,23 +437,23 @@ class Townsquare(commands.Cog):
                 for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
                     nom.votes[substitute.id] = nom.votes.pop(old_player_id)
                     await self.update_nom_message(game_number, nom)
-            await self.log(game_number, f"{ctx.author.mention} has substituted {old_player_alias} with "
+            await self.log(game_number, f"{interaction.user.mention} has substituted {old_player_alias} with "
                                         f"{substitute.display_name}")
             logging.debug(f"Substituted {old_player_alias} with {substitute.display_name} in game {game_number} - "
                           f"current town square: {self.town_squares[game_number]}")
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the storyteller for this game")
+            await utility.deny_app_command(interaction, "You are not the storyteller for this game")
 
-    @commands.command(aliases=["CreateNomThread", "CreateNominationsThread"])
-    async def CreateNominationThread(self, ctx: commands.Context, game_number: str, name: Optional[str]):
+    @nextcord.slash_command(name="create_nomination_thread")
+    async def CreateNominationThread(self, interaction: nextcord.Interaction, game_number: str, name: Optional[str]):
         """Creates a thread for nominations to be run in.
         The name of the thread is optional, with `Nominations` as default."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             if name is not None and len(name) > 100:
-                await utility.dm_user(ctx.author, "Thread name is too long, will be shortened")
+                await utility.dm_user(interaction.user, "Thread name is too long, will be shortened")
             game_channel = self.helper.get_game_channel(game_number)
             thread = await game_channel.create_thread(name=name[:100] if name is not None else "Nominations",
                                                       auto_archive_duration=4320,
@@ -445,50 +462,50 @@ class Townsquare(commands.Cog):
                 await thread.add_user(st)
             self.town_squares[game_number].nomination_thread = thread.id
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You are not the storyteller for this game")
+            await utility.deny_app_command(interaction, "You are not the storyteller for this game")
 
-    @commands.command()
-    async def Nominate(self, ctx: commands.Context, game_number: str,
+    @nextcord.slash_command(name="nominate")
+    async def Nominate(self, interaction: nextcord.Interaction, game_number: str,
                        nominee_identifier: str, nominator_identifier: Optional[str]):
         """Create a nomination for the given nominee.
         If you are an ST, provide the nominator. If you are a player, leave the nominator out or give yourself.
         In either case, you don't need to ping, a name should work."""
+        await interaction.response.defer()
         game_role = self.helper.get_game_role(game_number)
         # check permission
-        can_nominate = self.helper.authorize_st_command(ctx.author, game_number) or game_role in ctx.author.roles
-        nominee = self.get_game_participant(game_number, nominee_identifier)
-        nominator = self.get_game_participant(game_number, nominator_identifier) if nominator_identifier else None
+        can_nominate = await self.helper.authorize_st_command(interaction.user, game_number) or game_role in interaction.user.roles
+        nominee = await self.get_game_participant(game_number, nominee_identifier)
+        nominator = await self.get_game_participant(game_number, nominator_identifier) if nominator_identifier else None
         game_channel = self.helper.get_game_channel(game_number)
         nom_thread = game_channel.get_thread(self.town_squares[game_number].nomination_thread)
         if not can_nominate:
-            await utility.deny_command(ctx, "You must participate in the game to nominate!")
-        elif not self.helper.authorize_st_command(ctx.author,
-                                                  game_number) and nominator and nominator.id != ctx.author.id:
-            await utility.deny_command(ctx, "You may not nominate in the name of others")
+            await utility.deny_app_command(interaction, "You must participate in the game to nominate!")
+        elif not await self.helper.authorize_st_command(interaction.user,
+                                                  game_number) and nominator and nominator.id != interaction.user.id:
+            await utility.deny_app_command(interaction, "You may not nominate in the name of others")
         elif nominator_identifier and not nominator:
-            await utility.deny_command(ctx, "The nominator must be a game participant")
+            await utility.deny_app_command(interaction, "The nominator must be a game participant")
         elif not nominee:  # Atheist allows ST to be nominated
-            await utility.deny_command(ctx, "The nominee must be a game participant")
+            await utility.deny_app_command(interaction, "The nominee must be a game participant")
         elif not nom_thread:
-            await utility.deny_command(ctx, "The nomination thread has not been created. Ask an ST to fix this.")
+            await utility.deny_app_command(interaction, "The nomination thread has not been created. Ask an ST to fix this.")
         elif any([nominee.id == nom.nominee.id and not nom.finished for nom in
                   self.town_squares[game_number].nominations]):
-            await utility.deny_command(ctx, "That player has already been nominated")
+            await utility.deny_app_command(interaction, "That player has already been nominated")
         else:
-            await utility.start_processing(ctx)
             participants = self.town_squares[game_number].players + self.town_squares[game_number].sts
             converted_nominee = next((p for p in participants if p.id == nominee.id), None)
             if not converted_nominee:
-                await utility.deny_command(ctx,
+                await utility.deny_app_command(interaction,
                                            "The Nominee is not included in the town square. Ask an ST to fix this.")
             if not nominator_identifier:
-                converted_nominator = next((p for p in participants if p.id == ctx.author.id), None)
+                converted_nominator = next((p for p in participants if p.id == interaction.user.id), None)
             else:
                 converted_nominator = next((p for p in participants if p.id == nominator.id), None)
             if not converted_nominator:
-                await utility.deny_command(ctx,
+                await utility.deny_app_command(interaction,
                                            "The Nominator is not included in the town square. Ask an ST to fix this.")
             votes = {}
             for player in self.town_squares[game_number].players:
@@ -501,493 +518,473 @@ class Townsquare(commands.Cog):
             nom.message = nom_message.id
             self.town_squares[game_number].nominations.append(nom)
             logging.debug(f"Nomination created: in game {game_number}: {nom}")
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
             self.store.save()
             await self.log(game_number, f"{converted_nominator.alias} has nominated {converted_nominee.alias}")
 
-    @commands.command()
-    async def AddAccusation(self, ctx: commands.Context, game_number: str, accusation: str,
+    @nextcord.slash_command(name="add_accusation")
+    async def AddAccusation(self, interaction: nextcord.Interaction, game_number: str, accusation: str,
                             nominee_identifier: Optional[str]):
         """Add an accusation to the nomination of the given nominee.
         You don't need to ping, a name should work. You must be the nominator or a storyteller for this."""
         if len(accusation) > 900:
-            await utility.deny_command(ctx, "Your accusation is too long. Consider posting it in public and "
+            await utility.deny_app_command(interaction, "Your accusation is too long. Consider posting it in public and "
                                             "setting a link to the message as your accusation.")
             return
-        await utility.start_processing(ctx)
+        await interaction.response.defer()
         if nominee_identifier:
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
         else:
             nom = next((n for n in self.town_squares[game_number].nominations
-                        if n.nominator.id == ctx.author.id and not n.finished), None)
+                        if n.nominator.id == interaction.user.id and not n.finished), None)
         if not nom:
-            await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+            await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
             return
-        if ctx.author.id == nom.nominator.id or self.helper.authorize_st_command(ctx.author, game_number):
+        if interaction.user.id == nom.nominator.id or await self.helper.authorize_st_command(interaction.user, game_number):
             nom.accusation = accusation
             self.store.save()
             await self.update_nom_message(game_number, nom)
-            await utility.finish_processing(ctx)
-            await self.log(game_number, f"{ctx.author} has added this accusation to the nomination of "
+            await interaction.followup.send("Done", ephemeral=True)
+            await self.log(game_number, f"{interaction.user} has added this accusation to the nomination of "
                                         f"{nom.nominee.alias}: {accusation}")
         else:
-            await utility.deny_command(ctx, "You must be the ST or nominator to use this command")
+            await utility.deny_app_command(interaction, "You must be the ST or nominator to use this command")
 
-    @commands.command(aliases=["AddDefence"])
-    async def AddDefense(self, ctx: commands.Context, game_number: str, defense: str,
+    @nextcord.slash_command(name="add_defense")
+    async def AddDefense(self, interaction: nextcord.Interaction, game_number: str, defense: str,
                          nominee_identifier: Optional[str]):
         """Add a defense to your nomination or that of the given nominee.
         You must be a storyteller for the latter."""
         if len(defense) > 900:
-            await utility.deny_command(ctx, "Your defense is too long. Consider posting it in public and "
+            await utility.deny_app_command(interaction, "Your defense is too long. Consider posting it in public and "
                                             "setting a link to the message as your defense.")
             return
-        await utility.start_processing(ctx)
+        await interaction.response.defer()
         if nominee_identifier:
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
         else:
             nom = next((n for n in self.town_squares[game_number].nominations if
-                        n.nominee.id == ctx.author.id and not n.finished), None)
+                        n.nominee.id == interaction.user.id and not n.finished), None)
         if not nom:
-            await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+            await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
             return
-        if ctx.author.id == nom.nominee.id or self.helper.authorize_st_command(ctx.author, game_number):
+        if interaction.user.id == nom.nominee.id or await self.helper.authorize_st_command(interaction.user, game_number):
             nom.defense = defense
             self.store.save()
             await self.update_nom_message(game_number, nom)
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
             await self.log(game_number,
-                           f"{ctx.author} has added this defense to the nomination of {nom.nominee.alias}: {defense}")
+                           f"{interaction.user} has added this defense to the nomination of {nom.nominee.alias}: {defense}")
         else:
-            await utility.deny_command(ctx, "You must be the ST or nominee to use this command")
+            await utility.deny_app_command(interaction, "You must be the ST or nominee to use this command")
 
-    @commands.command()
-    async def SetVoteThreshold(self, ctx: commands.Context, game_number: str, target: int):
+    @nextcord.slash_command(name="set_vote_threshold")
+    async def SetVoteThreshold(self, interaction: nextcord.Interaction, game_number: str, target: int):
         """Set the vote threshold to put a player on the block to the given number.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             if target < 0:
-                await utility.deny_command(ctx, "Vote threshold cannot be negative")
+                await utility.deny_app_command(interaction, "Vote threshold cannot be negative")
                 return
             self.town_squares[game_number].vote_threshold = target
             for nom in [nom for nom in self.town_squares[game_number].nominations if not nom.finished]:
                 await self.update_nom_message(game_number, nom)
             self.store.save()
-            await utility.finish_processing(ctx)
-            await self.log(game_number, f"{ctx.author} has set the vote threshold to {target}")
+            await interaction.followup.send("Done", ephemeral=True)
+            await self.log(game_number, f"{interaction.user} has set the vote threshold to {target}")
 
-    @commands.command()
-    async def SetDeadline(self, ctx: commands.Context, game_number: str, nominee_identifier: str, time_in_h: float):
+    @nextcord.slash_command(name="set_deadline")
+    async def SetDeadline(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str, time_in_h: float):
         """Set the deadline for the nomination of a given nominee to the given number of hours from now.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             time = datetime.timedelta(hours=time_in_h)
             if utcnow() + time < utcnow():
-                await utility.deny_command(ctx, "Deadline must be in the future")
+                await utility.deny_app_command(interaction, "Deadline must be in the future")
                 return
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
             if not nom:
-                await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
                 return
             nom.deadline = format_dt(utcnow() + time, "R")
             self.store.save()
             await self.update_nom_message(game_number, nom)
-            await utility.finish_processing(ctx)
-            await self.log(game_number, f"{ctx.author} has set the deadline for the nomination of {nom.nominee.alias} "
+            await interaction.followup.send("Done", ephemeral=True)
+            await self.log(game_number, f"{interaction.user} has set the deadline for the nomination of {nom.nominee.alias} "
                                         f"to {format_dt(utcnow() + time)}")
         else:
-            await utility.deny_command(ctx, "You must be the ST to use this command")
+            await utility.deny_app_command(interaction, "You must be the ST to use this command")
 
-    @commands.command()
-    async def SetDefaultDeadline(self, ctx: commands.Context, game_number: str, hours: int):
+    @nextcord.slash_command(name="set_default_deadline")
+    async def SetDefaultDeadline(self, interaction: nextcord.Interaction, game_number: str, hours: int):
         """Set the default nomination duration for the game to the given number of hours.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             if hours < 0:
-                await utility.deny_command(ctx, "Deadline must be in the future")
+                await utility.deny_app_command(interaction, "Deadline must be in the future")
                 return
             self.town_squares[game_number].default_nomination_duration = hours * 3600
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You must be the ST to use this command")
+            await utility.deny_app_command(interaction, "You must be the ST to use this command")
 
-    @commands.command(usage="<game number> [nominee]... [vote]")
-    async def Vote(self, ctx: commands.Context, *args):
+    @nextcord.slash_command(name="vote")
+    async def Vote(self, interaction: nextcord.Interaction, game_number: str, nominee_identifiers: str, vote: str):
         """Set your vote for the given nominee or nominees.
         You don't need to ping, name(s) should work.
         Your vote can be anything, but should be something the ST can unambiguously interpret as yes or no when they
         count it. You can change your vote until it is counted by the storyteller."""
-        if len(args) < 3:
-            await utility.deny_command(ctx, "You must provide the game number, at least one nominee, and your vote")
+        nominee_identifiers = [identifier.strip() for identifier in nominee_identifiers.split(",") if identifier.strip()]
+        if not nominee_identifiers:
+            await utility.deny_app_command(interaction, "You must provide at least one nominee")
             return
-        game_number = args[0]
-        vote = args[-1]
-        nominee_identifiers = args[1:-1]
         game_role = self.helper.get_game_role(game_number)
         if not game_role:
-            await utility.deny_command(ctx, f"Game '{game_number}' does not exist")
+            await utility.deny_app_command(interaction, f"Game '{game_number}' does not exist")
             return
         if len(vote) > 400:
-            await utility.deny_command(ctx, "Your vote is too long. Consider simplifying your condition. If that is "
+            await utility.deny_app_command(interaction, "Your vote is too long. Consider simplifying your condition. If that is "
                                             "somehow impossible, just let the ST know.")
             return
-        voter = next((p for p in self.town_squares[game_number].players if p.id == ctx.author.id), None)
-        if self.town_squares[game_number].organ_grinder and (ctx.channel in self.helper.TextGamesCategory.channels or
-                                                             ctx.channel.type == nextcord.ChannelType.public_thread):
-            await ctx.message.delete()
-            await utility.dm_user(ctx.author, "Please do not vote in public while the Organ Grinder is active. Your "
+        voter = next((p for p in self.town_squares[game_number].players if p.id == interaction.user.id), None)
+        if self.town_squares[game_number].organ_grinder and (interaction.channel in self.helper.TextGamesCategory.channels or
+                                                             interaction.channel.type == nextcord.ChannelType.public_thread):
+            await utility.deny_app_command(interaction, "Please do not vote in public while the Organ Grinder is active. Your vote was not registered.")
+            await utility.dm_user(interaction.user, "Please do not vote in public while the Organ Grinder is active. Your "
                                               "vote was not registered.")
             await self.log(game_number, f"{voter.alias} tried to vote '{vote}' on {', '.join(nominee_identifiers)} in "
                                         f"public. Vote was not registered")
             return
         if not voter:
-            await utility.deny_command(ctx, "You are not included in the town square. Ask the ST to correct this.")
+            await utility.deny_app_command(interaction, "You are not included in the town square. Ask the ST to correct this.")
             return
         if not voter.can_vote:
-            await utility.deny_command(ctx, "You seem to have spent your vote already.")
+            await utility.deny_app_command(interaction, "You seem to have spent your vote already.")
             return
         if vote in [confirmed_yes_vote, confirmed_no_vote, not_voted_yet]:
-            await utility.deny_command(ctx, "Nice try. That's a reserved string for internal handling, "
+            await utility.deny_app_command(interaction, "Nice try. That's a reserved string for internal handling, "
                                             "you cannot set your vote to it.")
             return
-        if game_role in ctx.author.roles:
-            await utility.start_processing(ctx)
+        if game_role in interaction.user.roles:
+            await interaction.response.defer()
             for nominee_identifier in nominee_identifiers:
-                nominee = self.get_game_participant(game_number, nominee_identifier)
+                nominee = await self.get_game_participant(game_number, nominee_identifier)
                 if not nominee:
-                    await utility.dm_user(ctx.author,
+                    await utility.dm_user(interaction.user,
                                           f"Could not clearly identify any player from {nominee_identifier}")
                     continue
                 nom = next((n for n in self.town_squares[game_number].nominations if
                             n.nominee.id == nominee.id and not n.finished), None)
                 if not nom:
-                    await utility.dm_user(ctx.author, f"No relevant nomination found for nominee {nominee_identifier}")
+                    await utility.dm_user(interaction.user, f"No relevant nomination found for nominee {nominee_identifier}")
                     continue
                 if nom.votes[voter.id].vote in [confirmed_yes_vote, confirmed_no_vote]:
-                    await utility.dm_user(ctx.author, f"Your vote on {nominee_identifier} is already locked in and "
+                    await utility.dm_user(interaction.user, f"Your vote on {nominee_identifier} is already locked in and "
                                                       f"cannot be changed.")
                     continue
                 nom.votes[voter.id] = Vote(vote)
-                await self.update_nom_message(game_number, nom)
+                await self.announce_vote(game_number, voter, nom, vote)
                 await self.log(game_number,
-                               f"{ctx.author} has set their vote on the nomination of {nom.nominee.alias} to {vote}")
+                               f"{interaction.user} has set their vote on the nomination of {nom.nominee.alias} to {vote}")
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
         else:
-            await utility.deny_command(ctx, "You must be a player to vote. "
+            await utility.deny_app_command(interaction, "You must be a player to vote. "
                                             "If you are, the ST may have to add you to the town square.")
 
-    @commands.command()
-    async def PrivateVote(self, ctx: commands.Context, game_number: str, nominee_identifier: str, vote: str):
+    @nextcord.slash_command(name="private_vote")
+    async def PrivateVote(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str, vote: str):
         """Same as >Vote, but your vote will be hidden from other players.
         They will still see whether you voted yes or no after your vote is counted. A private vote will always override
         any public vote, even later ones. If you want your public vote to be counted instead,
         you can change your private vote accordingly or use >RemovePrivateVote."""
         game_role = self.helper.get_game_role(game_number)
-        if game_role in ctx.author.roles:
-            await utility.start_processing(ctx)
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+        if game_role in interaction.user.roles:
+            await interaction.response.defer()
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
-            voter = next((p for p in self.town_squares[game_number].players if p.id == ctx.author.id), None)
+            voter = next((p for p in self.town_squares[game_number].players if p.id == interaction.user.id), None)
             if not nom:
-                await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
                 return
             if not voter:
-                await utility.deny_command(ctx,
+                await utility.deny_app_command(interaction,
                                            "You are not included in the town square. Ask the ST to correct this.")
                 return
             if nom.votes[voter.id].vote in [confirmed_yes_vote, confirmed_no_vote]:
-                await utility.deny_command(ctx, "Your vote is already locked in and cannot be changed.")
+                await utility.deny_app_command(interaction, "Your vote is already locked in and cannot be changed.")
                 return
             if not voter.can_vote:
-                await utility.deny_command(ctx, "You seem to have spent your vote already.")
+                await utility.deny_app_command(interaction, "You seem to have spent your vote already.")
                 return
             if vote in [confirmed_yes_vote, confirmed_no_vote, not_voted_yet]:
-                await utility.deny_command(ctx, "Nice try. That's a reserved string for internal handling, "
+                await utility.deny_app_command(interaction, "Nice try. That's a reserved string for internal handling, "
                                                 "you cannot set your vote to it.")
                 return
             nom.private_votes[voter.id] = vote
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
             await self.log(game_number,
-                           f"{ctx.author} has set a private vote on the nomination of {nom.nominee.alias} as {vote}")
+                           f"{interaction.user} has set a private vote on the nomination of {nom.nominee.alias} as {vote}")
         else:
-            await utility.deny_command(ctx, "You must be a player to vote. "
+            await utility.deny_app_command(interaction, "You must be a player to vote. "
                                             "If you are, the ST may have to add you to the town square.")
 
-    @commands.command()
-    async def RemovePrivateVote(self, ctx: commands.Context, game_number: str, nominee_identifier: str):
+    @nextcord.slash_command(name="remove_private_vote")
+    async def RemovePrivateVote(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str):
         """Removes your private vote for the given nominee, so that your public vote is counted instead."""
         game_role = self.helper.get_game_role(game_number)
-        if game_role in ctx.author.roles:
-            await utility.start_processing(ctx)
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+        if game_role in interaction.user.roles:
+            await interaction.response.defer()
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
-            voter = next((p for p in self.town_squares[game_number].players if p.id == ctx.author.id), None)
+            voter = next((p for p in self.town_squares[game_number].players if p.id == interaction.user.id), None)
             if not nom:
-                await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
                 return
             if not voter:
-                await utility.deny_command(ctx,
+                await utility.deny_app_command(interaction,
                                            "You are not included in the town square. Ask the ST to correct this.")
                 return
             private_vote = nom.private_votes.pop(voter.id, None)
             self.store.save()
-            await utility.finish_processing(ctx)
+            await interaction.followup.send("Done", ephemeral=True)
             if private_vote:
-                await utility.dm_user(ctx.author, f"Your private vote on the nomination of {nom.nominee.alias} "
+                await utility.dm_user(interaction.user, f"Your private vote on the nomination of {nom.nominee.alias} "
                                                   f"has been removed.")
             else:
-                await utility.dm_user(ctx.author, f"You have no private vote on the nomination of {nom.nominee.alias}.")
+                await utility.dm_user(interaction.user, f"You have no private vote on the nomination of {nom.nominee.alias}.")
             await self.log(game_number,
-                           f'{ctx.author} has removed their private vote, "{private_vote}", '
+                           f'{interaction.user} has removed their private vote, "{private_vote}", '
                            f'on the nomination of {nom.nominee.alias}')
         else:
-            await utility.deny_command(ctx, "You must be a player to vote. "
+            await utility.deny_app_command(interaction, "You must be a player to vote. "
                                             "If you are, the ST may have to add you to the town square.")
 
-    @commands.command()
-    async def CountVotes(self, ctx: commands.Context, game_number: str, nominee_identifier: str,
-                         override: Optional[Literal["public"]] = None):
-        """Begins counting the votes for the given nominee.
-        You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            if override is None and (ctx.channel in self.helper.TextGamesCategory.channels or
-                                     (isinstance(ctx.channel, nextcord.Thread) and
-                                      ctx.channel.parent in self.helper.TextGamesCategory.channels)):
-                await utility.deny_command(ctx,
-                                           'Vote counting should probably not happen in public, or private prevotes '
-                                           'might be exposed. If you want to do so anyway, run the command again with '
-                                           '`public` added at the end')
-                return
-            nominee = self.get_game_participant(game_number, nominee_identifier)
-            if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
-                return
-            nom = next((n for n in self.town_squares[game_number].nominations if
-                        n.nominee.id == nominee.id and not n.finished), None)
-            if not nom:
-                await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
-                return
-            view = CountVoteView(self, nom, ctx.author, game_number, self.emoji)
-            message = await ctx.send(content="`Count as yes` and `Count as no` will lock the current player's vote in, "
-                                             "update the public nomination message and proceed to the next player. "
-                                             "Any other button will not lock the vote in, allowing you to make "
-                                             "further adjustments. Click any button to begin",
-                                     view=view)
-            view.message = message
-            self.vote_count_views.append(view)
-            await utility.finish_processing(ctx)
-        else:
-            await utility.deny_command(ctx, "You must be the Storyteller to count the votes for a nomination")
+    @nextcord.slash_command(name="count_votes")
+    async def CountVotes(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str):
+        """Start a private, per-player modal flow for counting an active nomination."""
+        if not await self.helper.authorize_st_command(interaction.user, game_number):
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            return
+        nominee = await self.get_game_participant(game_number, nominee_identifier)
+        if not nominee:
+            await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
+            return
+        nom = next((nomination for nomination in self.town_squares[game_number].nominations
+                    if nomination.nominee.id == nominee.id and not nomination.finished), None)
+        if not nom:
+            await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
+            return
+        session = CountVoteSession(self, nom, interaction.user, game_number)
+        await interaction.response.send_modal(CountVoteModal(session))
 
-    @commands.command()
-    async def SetVote(self, ctx: commands.Context, game_number: str, nominee_identifier: str, voter_identifier: str,
+    @nextcord.slash_command(name="set_vote")
+    async def SetVote(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str, voter_identifier: str,
                       vote: Optional[str]):
         """Sets the vote on the given nominee for the given voter to the given vote. If no vote is given, it is simply
         reset. You must be a storyteller for this. Note that you cannot lock a vote in this way."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
-            voter = self.get_game_participant(game_number, voter_identifier)
+            voter = await self.get_game_participant(game_number, voter_identifier)
             if not voter:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {voter_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {voter_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
             if not nom:
-                await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
                 return
             if not vote:
                 vote = not_voted_yet
             nom.votes[voter.id] = Vote(vote)
             await self.update_nom_message(game_number, nom)
-            await utility.finish_processing(ctx)
-            await self.log(game_number, f"{ctx.author} has set the vote of {voter.name} on the nomination of "
+            await interaction.followup.send("Done", ephemeral=True)
+            await self.log(game_number, f"{interaction.user} has set the vote of {voter.name} on the nomination of "
                                         f"{nom.nominee.alias}")
         else:
-            await utility.deny_command(ctx, "You must be the Storyteller to reset a vote")
+            await utility.deny_app_command(interaction, "You must be the Storyteller to reset a vote")
 
-    @commands.command(aliases=["CloseNom"])
-    async def CloseNomination(self, ctx: commands.Context, game_number: str, nominee_identifier: str):
+    @nextcord.slash_command(name="close_nomination")
+    async def CloseNomination(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str):
         """Marks the nomination for the given nominee as closed.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            nominee = self.get_game_participant(game_number, nominee_identifier)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
+            nominee = await self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
                 return
             nom = next((n for n in self.town_squares[game_number].nominations if
                         n.nominee.id == nominee.id and not n.finished), None)
             if not nom:
-                await utility.deny_command(ctx, f"No relevant nomination found for nominee {nominee_identifier}")
+                await utility.deny_app_command(interaction, f"No relevant nomination found for nominee {nominee_identifier}")
                 return
             else:
                 nom.finished = True
                 self.store.save()
-                await utility.finish_processing(ctx)
-                await self.log(game_number, f"{ctx.author} has closed the nomination of {nom.nominee.alias}")
+                await interaction.followup.send("Done", ephemeral=True)
+                await self.log(game_number, f"{interaction.user} has closed the nomination of {nom.nominee.alias}")
         else:
-            await utility.deny_command(ctx, "You must be the Storyteller to close a nomination")
+            await utility.deny_app_command(interaction, "You must be the Storyteller to close a nomination")
 
-    @commands.command()
-    async def SetAlias(self, ctx: commands.Context, game_number: str, alias: str):
+    @nextcord.slash_command(name="set_alias")
+    async def SetAlias(self, interaction: nextcord.Interaction, game_number: str, alias: str):
         """Set your preferred alias for the given game.
         This will be used anytime the bot refers to you. The default is your username.
         Can be used by players and storytellers."""
         game_role = self.helper.get_game_role(game_number)
         st_role = self.helper.get_st_role(game_number)
         if len(alias) > 100 or utility.is_mention(alias):
-            await utility.deny_command(ctx, f"not an allowed alias: {alias}"[:2000])
+            await utility.deny_app_command(interaction, f"not an allowed alias: {alias}"[:2000])
             return
-        if game_role in ctx.author.roles:
-            await utility.start_processing(ctx)
-            player = next((p for p in self.town_squares[game_number].players if p.id == ctx.author.id), None)
+        if game_role in interaction.user.roles:
+            await interaction.response.defer()
+            player = next((p for p in self.town_squares[game_number].players if p.id == interaction.user.id), None)
             if not player:
-                await utility.deny_command(ctx,
+                await utility.deny_app_command(interaction,
                                            "You are not included in the town square. Ask the ST to correct this.")
                 return
             player.alias = alias
             self.store.save()
-            await self.log(game_number, f"{ctx.author.name} has set their alias to {alias}")
-            await utility.finish_processing(ctx)
-        elif st_role in ctx.author.roles:
-            await utility.start_processing(ctx)
-            st = next((st for st in self.town_squares[game_number].sts if st.id == ctx.author.id), None)
+            await self.log(game_number, f"{interaction.user.name} has set their alias to {alias}")
+            await interaction.followup.send("Done", ephemeral=True)
+        elif st_role in interaction.user.roles:
+            await interaction.response.defer()
+            st = next((st for st in self.town_squares[game_number].sts if st.id == interaction.user.id), None)
             if not st:
-                await utility.deny_command(ctx, "Something went wrong and you are not included in the townsquare. "
+                await utility.deny_app_command(interaction, "Something went wrong and you are not included in the townsquare. "
                                                 "Try dropping and re-adding the grimoire")
                 return
             st.alias = alias
             self.store.save()
-            await utility.finish_processing(ctx)
-            await self.log(game_number, f"{ctx.author.name} has set their alias to {alias}")
+            await interaction.followup.send("Done", ephemeral=True)
+            await self.log(game_number, f"{interaction.user.name} has set their alias to {alias}")
         else:
-            await utility.deny_command(ctx, "You must be a player to set your alias. "
+            await utility.deny_app_command(interaction, "You must be a player to set your alias. "
                                             "If you are, the ST may have to add you to the town square.")
 
-    @commands.command(aliases=["TOrganGrinder"])
-    async def ToggleOrganGrinder(self, ctx: commands.Context, game_number: str):
+    @nextcord.slash_command(name="toggle_organ_grinder")
+    async def ToggleOrganGrinder(self, interaction: nextcord.Interaction, game_number: str):
         """Activates or deactivates Organ Grinder for the display of nominations in the game.
         Finished nominations are not updated.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             self.town_squares[game_number].organ_grinder = not self.town_squares[game_number].organ_grinder
             self.store.save()
             for nom in self.town_squares[game_number].nominations:
                 if not nom.finished:
                     await self.update_nom_message(game_number, nom)
-            await utility.finish_processing(ctx)
-            await utility.dm_user(ctx.author,
+            await interaction.followup.send("Done", ephemeral=True)
+            await utility.dm_user(interaction.user,
                                   f"Organ Grinder is now "
                                   f"{'enabled' if self.town_squares[game_number].organ_grinder else 'disabled'}")
         else:
-            await utility.deny_command(ctx, "You must be the Storyteller to toggle the Organ Grinder")
+            await utility.deny_app_command(interaction, "You must be the Storyteller to toggle the Organ Grinder")
 
-    @commands.command(aliases=["TPlayerNoms"])
-    async def TogglePlayerNoms(self, ctx: commands.Context, game_number: str):
+    @nextcord.slash_command(name="toggle_player_noms")
+    async def TogglePlayerNoms(self, interaction: nextcord.Interaction, game_number: str):
         """Activates or deactivates the ability of players to nominate directly.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             if game_number not in self.town_squares:
-                await utility.deny_command(ctx, "Town square not set up yet.")
+                await utility.deny_app_command(interaction, "Town square not set up yet.")
                 return
             self.town_squares[game_number].player_noms_allowed = not self.town_squares[game_number].player_noms_allowed
             self.store.save()
-            await utility.finish_processing(ctx)
-            await utility.dm_user(ctx.author,
+            await interaction.followup.send("Done", ephemeral=True)
+            await utility.dm_user(interaction.user,
                                   f"Player nominations are now "
                                   f"{'enabled' if self.town_squares[game_number].player_noms_allowed else 'disabled'}")
         else:
-            await utility.deny_command(ctx, "You must be the Storyteller to toggle player nominations")
+            await utility.deny_app_command(interaction, "You must be the Storyteller to toggle player nominations")
 
-    @commands.command(aliases=["TMarkedDead","togglemarkdead"])
-    async def ToggleMarkedDead(self, ctx: commands.Context, game_number: str, player_identifier: str):
+    @nextcord.slash_command(name="toggle_marked_dead")
+    async def ToggleMarkedDead(self, interaction: nextcord.Interaction, game_number: str, player_identifier: str):
         """Marks the given player as dead or alive for display on nominations.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            player_user = self.get_game_participant(game_number, player_identifier)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
+            player_user = await self.get_game_participant(game_number, player_identifier)
             if not player_user:
-                await utility.deny_command(ctx, f"Could not find player with identifier {player_identifier}")
+                await utility.deny_app_command(interaction, f"Could not find player with identifier {player_identifier}")
                 return
             player = next((p for p in self.town_squares[game_number].players if p.id == player_user.id), None)
             if not player:
-                await utility.deny_command(ctx, f"{player_user.display_name} is not included in the town square.")
+                await utility.deny_app_command(interaction, f"{player_user.display_name} is not included in the town square.")
                 return
             player.dead = not player.dead
             self.store.save()
-            await utility.finish_processing(ctx)
-            await utility.dm_user(ctx.author, f"{player.alias} is now "
+            await interaction.followup.send("Done", ephemeral=True)
+            await utility.dm_user(interaction.user, f"{player.alias} is now "
                                               f"{'marked as dead' if player.dead else 'marked as living'}")
-            await self.log(game_number, f"{ctx.author} has marked {player.alias} as "
+            await self.log(game_number, f"{interaction.user} has marked {player.alias} as "
                                         f"{'dead' if player.dead else 'living'}")
         else:
-            await utility.deny_command(ctx, "You must be the Storyteller to mark a player as dead")
+            await utility.deny_app_command(interaction, "You must be the Storyteller to mark a player as dead")
 
-    @commands.command(aliases=["TCanVote"])
-    async def ToggleCanVote(self, ctx: commands.Context, game_number: str, player_identifier: str):
+    @nextcord.slash_command(name="toggle_can_vote")
+    async def ToggleCanVote(self, interaction: nextcord.Interaction, game_number: str, player_identifier: str):
         """Allows or disallows the given player to vote.
         You must be a storyteller for this."""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
-            player_user = self.get_game_participant(game_number, player_identifier)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
+            player_user = await self.get_game_participant(game_number, player_identifier)
             if not player_user:
-                await utility.deny_command(ctx, f"Could not clearly identify any player from {player_identifier}")
+                await utility.deny_app_command(interaction, f"Could not clearly identify any player from {player_identifier}")
                 return
             player = next((p for p in self.town_squares[game_number].players if p.id == player_user.id), None)
             if not player:
-                await utility.deny_command(ctx, f"{player_user.display_name} is not included in the town square.")
+                await utility.deny_app_command(interaction, f"{player_user.display_name} is not included in the town square.")
                 return
             player.can_vote = not player.can_vote
             self.store.save()
-            await utility.finish_processing(ctx)
-            await utility.dm_user(ctx.author, f"{player.alias} can now "
+            await interaction.followup.send("Done", ephemeral=True)
+            await utility.dm_user(interaction.user, f"{player.alias} can now "
                                               f"{'vote' if player.can_vote else 'not vote'}")
-            await self.log(game_number, f"{ctx.author} has set {player.alias} as "
+            await self.log(game_number, f"{interaction.user} has set {player.alias} as "
                                         f"{'able to vote' if player.can_vote else 'unable to vote'}")
         else:
-            await utility.deny_command(ctx, "You must be the Storyteller to toggle a player's voting ability")
+            await utility.deny_app_command(interaction, "You must be the Storyteller to toggle a player's voting ability")
 
-    @commands.command()
-    async def RecreateNoms(self,ctx: commands.Context, game_number: str):
+    @nextcord.slash_command(name="recreate_noms")
+    async def RecreateNoms(self,interaction: nextcord.Interaction, game_number: str):
         """creates new messages for each nom"""
-        if self.helper.authorize_st_command(ctx.author, game_number):
-            await utility.start_processing(ctx)
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer()
             # add new carat to logging thread
             kibitz = self.helper.get_kibitz_channel(game_number)
             log_thread = kibitz.get_thread(self.town_squares[game_number].log_thread)
@@ -995,7 +992,7 @@ class Townsquare(commands.Cog):
                 if self.bot.user.id not in [m.id for m in log_thread.members]:
                     await log_thread.join()
             except:
-                await utility.dm_user(ctx.author, "Could not join the Noms & Votes logging thread in Kibitz. Please add me.")
+                await utility.dm_user(interaction.user, "Could not join the Noms & Votes logging thread in Kibitz. Please add me.")
             game_role = self.helper.get_game_role(game_number)
             nom_thread = get(self.helper.Guild.threads, id=self.town_squares[game_number].nomination_thread)
             for nom in [n for n in self.town_squares[game_number].nominations if not n.finished]:
@@ -1003,213 +1000,200 @@ class Townsquare(commands.Cog):
                 nom_message = await nom_thread.send(content=content, embed=embed)
                 nom.message = nom_message.id
             self.store.save()
-            await utility.finish_processing(ctx)
-            await utility.dm_user(ctx.author, f"Recreated nominations for {game_number}")
+            await interaction.followup.send("Done", ephemeral=True)
+            await utility.dm_user(interaction.user, f"Recreated nominations for {game_number}")
             await self.log(game_number, f"Recreated nominations")
         else:
-            await utility.deny_command(ctx, "Not permitted")
+            await utility.deny_app_command(interaction, "Not permitted")
 
-    @commands.command()
-    async def GetTSStatus(self, ctx: commands.Context, game_number: str):
-        if self.helper.authorize_st_command(ctx.author, game_number):
+    @nextcord.slash_command(name="show_nomination")
+    async def ShowNomination(self, interaction: nextcord.Interaction, game_number: str,
+                             nominee_identifier: str, public: bool = True):
+        """Show the current state of an active nomination without pinging the game role."""
+        if game_number not in self.town_squares:
+            await utility.deny_app_command(interaction, utility.DenialReason.NoTownSquare)
+            return
+        nominee = await self.get_game_participant(game_number, nominee_identifier)
+        if not nominee:
+            await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
+            return
+        nom = next((nomination for nomination in self.town_squares[game_number].nominations
+                    if nomination.nominee.id == nominee.id and not nomination.finished), None)
+        if not nom:
+            await utility.deny_app_command(interaction, f"No active nomination found for nominee {nominee_identifier}")
+            return
+        game_role = self.helper.get_game_role(game_number)
+        content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji,
+                                            include_game_role_mention=False)
+        await interaction.response.send_message(content=content, embed=embed, ephemeral=not public)
+
+    @nextcord.slash_command(name="get_ts_status")
+    async def GetTSStatus(self, interaction: nextcord.Interaction, game_number: str):
+        if await self.helper.authorize_st_command(interaction.user, game_number):
+            await interaction.response.defer(ephemeral=True)
             json_data = self.town_squares[game_number].to_dict()
             for nom in json_data.get("nominations", []):
                 nom.pop("private_votes", None)
             json_str = json.dumps(json_data, indent=2)
             bytes_data = io.BytesIO(json_str.encode("utf-8"))
-            await ctx.author.send(f"Townsquare {game_number} json", file=nextcord.File(bytes_data, f"Townsquare_{game_number}.json"))
+            await interaction.user.send(f"Townsquare {game_number} json", file=nextcord.File(bytes_data, f"Townsquare_{game_number}.json"))
+            await interaction.followup.send("Done", ephemeral=True)
+        else:
+            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
 
 
-class CountVoteView(nextcord.ui.View):
-    cog: Townsquare
-    game_number: str
-    nom: Nomination
-    author: nextcord.Member
-    emoji: Dict[str, nextcord.PartialEmoji]
-    player_list: List[Player]
-    player_index: int = -1
-    message: nextcord.Message
+class CountVoteSession:
+    """Tracks a Storyteller's sequential modal-based vote count."""
 
-    def __init__(self, votes_cog: Townsquare, nom: Nomination, author: nextcord.Member,
-                 game_number: str, emoji: Dict[str, nextcord.PartialEmoji]):
-        super().__init__()
-        self.cog = votes_cog
+    def __init__(self, cog: Townsquare, nom: Nomination, author: nextcord.Member, game_number: str):
+        self.cog = cog
         self.nom = nom
         self.author = author
-        self.player_list = reordered_players(self.nom, self.cog.town_squares[game_number])
         self.game_number = game_number
-        self.emoji = emoji
-        self.timeout = 86400  # 24h
+        self.players = reordered_players(nom, cog.town_squares[game_number])
+        self.player_index = 0
 
-    async def on_error(self, error: Exception, item: nextcord.ui.Item, interaction: nextcord.Interaction) -> None:
-        traceback_text = utility.traceback_text(error)
-        logging.exception(f"Ignoring exception in CountVoteView:\n{traceback_text}")
+    @property
+    def current_player(self) -> Player:
+        return self.players[self.player_index]
 
-    # executed when a button is clicked, if it returns False no callback function is called
-    async def interaction_check(self, interaction: nextcord.Interaction):
-        if not interaction.user == self.author:
-            await interaction.send(ephemeral=True, content="Only the command's user may interact with this")
+    def state_summary(self) -> str:
+        lines = [f"Nominator: {self.nom.nominator.alias}", f"Nominee: {self.nom.nominee.alias}"]
+        for player in self.players:
+            public_vote = self.nom.votes[player.id].vote
+            private_vote = self.nom.private_votes.get(player.id)
+            details = f"public: {public_vote}"
+            if private_vote is not None:
+                details += f", private: {private_vote}"
+            if player.dead:
+                details += ", dead"
+            if not player.can_vote:
+                details += ", no ghost vote"
+            prefix = "→ " if player == self.current_player else ""
+            lines.append(f"{prefix}{player.alias}: {details}")
+        return "\n".join(lines)[:4000]
+
+    @staticmethod
+    def parse_boolean(value: str, field_name: str) -> bool:
+        normalized = value.strip().lower()
+        if normalized in {"yes", "y", "true", "1"}:
+            return True
+        if normalized in {"no", "n", "false", "0", ""}:
+            return False
+        raise ValueError(f"{field_name} must be yes or no.")
+
+    @staticmethod
+    def apply_multiplier(vote_state: Vote, multiplier: int) -> None:
+        if multiplier not in {-6, -3, -2, -1, 1, 2, 3, 6}:
+            raise ValueError("Multiplier must be one of -6, -3, -2, -1, 1, 2, 3, or 6.")
+        vote_state.thief = multiplier < 0
+        magnitude = abs(multiplier)
+        vote_state.banshee = magnitude in {2, 6}
+        vote_state.bureaucrat = magnitude in {3, 6}
+
+    async def submit(self, interaction: nextcord.Interaction, vote_input: str, multiplier_input: str,
+                     mark_dead_input: str, remove_ghost_vote_input: str) -> None:
+        if interaction.user != self.author:
+            await utility.deny_app_command(interaction, "Only the Storyteller who started this count may continue it.")
+            return
+        normalized_vote = vote_input.strip().lower()
+        if normalized_vote not in {"yes", "no"}:
+            await utility.deny_app_command(interaction, "Count as must be yes or no.")
+            return
+        try:
+            multiplier = int(multiplier_input.strip())
+            mark_dead = self.parse_boolean(mark_dead_input, "Mark dead")
+            remove_ghost_vote = self.parse_boolean(remove_ghost_vote_input, "Remove ghost vote")
+            self.apply_multiplier(self.nom.votes[self.current_player.id], multiplier)
+        except ValueError as error:
+            await utility.deny_app_command(interaction, str(error))
+            return
+
+        player = self.current_player
+        vote = confirmed_yes_vote if normalized_vote == "yes" else confirmed_no_vote
+        vote_state = self.nom.votes[player.id]
+        self.nom.private_votes.pop(player.id, None)
+        vote_state.vote = vote
+        if mark_dead:
+            player.dead = True
+        if remove_ghost_vote:
+            player.can_vote = False
+
+        first_counted_vote = self.player_index == 0
+        self.player_index += 1
+        if self.player_index >= len(self.players):
+            self.nom.finished = True
+        self.cog.store.save()
+
+        if first_counted_vote:
+            game_role = self.cog.helper.get_game_role(self.game_number)
+            content, embed = format_nom_message(game_role, self.cog.town_squares[self.game_number], self.nom,
+                                                self.cog.emoji, include_game_role_mention=False)
+            await self.cog.get_nomination_thread(self.game_number).send(content=content, embed=embed)
+        await self.cog.announce_counted_vote(self.game_number, player, self.nom, vote)
+        await self.cog.log(self.game_number,
+                           f"{self.author} locked vote of {player.alias} on the nomination of "
+                           f"{self.nom.nominee.alias} as {normalized_vote}")
+
+        if self.nom.finished:
+            await interaction.response.send_message("Vote counting is complete.", ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"Counted {player.alias}. Continue with {self.current_player.alias}.",
+                view=CountVoteContinueView(self), ephemeral=True
+            )
+
+
+class CountVoteModal(nextcord.ui.Modal):
+    def __init__(self, session: CountVoteSession):
+        player = session.current_player
+        public_vote = session.nom.votes[player.id].vote
+        private_vote = session.nom.private_votes.get(player.id, "none")
+        super().__init__(f"Count vote: {player.alias}"[:45])
+        self.session = session
+        self.state = nextcord.ui.TextInput(
+            label="Nomination state (reference only)", style=nextcord.TextInputStyle.paragraph,
+            default_value=session.state_summary(), required=False, max_length=4000,
+        )
+        self.vote = nextcord.ui.TextInput(
+            label="Count as (yes/no)", placeholder=f"Public: {public_vote}; private: {private_vote}",
+            default_value="yes" if public_vote == confirmed_yes_vote else "no" if public_vote == confirmed_no_vote else "",
+            required=True, max_length=3,
+        )
+        self.multiplier = nextcord.ui.TextInput(
+            label="Combined multiplier", placeholder="-6, -3, -2, -1, 1, 2, 3, or 6",
+            default_value="1", required=True, max_length=2,
+        )
+        self.mark_dead = nextcord.ui.TextInput(
+            label="Mark player dead? (yes/no)", default_value="no", required=True, max_length=3,
+        )
+        self.remove_ghost_vote = nextcord.ui.TextInput(
+            label="Remove ghost vote? (yes/no)", default_value="no", required=True, max_length=3,
+        )
+        for item in (self.state, self.vote, self.multiplier, self.mark_dead, self.remove_ghost_vote):
+            self.add_item(item)
+
+    async def callback(self, interaction: nextcord.Interaction) -> None:
+        await self.session.submit(interaction, self.vote.value, self.multiplier.value,
+                                  self.mark_dead.value, self.remove_ghost_vote.value)
+
+
+class CountVoteContinueView(nextcord.ui.View):
+    def __init__(self, session: CountVoteSession):
+        super().__init__(timeout=86400)
+        self.session = session
+
+    async def interaction_check(self, interaction: nextcord.Interaction) -> bool:
+        if interaction.user != self.session.author:
+            await interaction.response.send_message("Only the Storyteller who started this count may continue it.",
+                                                    ephemeral=True)
             return False
         return True
 
-    async def check_initial(self):
-        if self.player_index == -1:
-            self.player_index = 0
-            banshee = next((item for item in self.children if
-                               isinstance(item, nextcord.ui.Button) and item.custom_id == "banshee"))
-            banshee.emoji = self.emoji["banshee"]
-            bureaucrat = next((item for item in self.children if
-                               isinstance(item, nextcord.ui.Button) and item.custom_id == "bureaucrat"))
-            bureaucrat.emoji = self.emoji["bureaucrat"]
-            thief = next(
-                (item for item in self.children if isinstance(item, nextcord.ui.Button) and item.custom_id == "thief"))
-            thief.emoji = self.emoji["thief"]
-            mark_dead = next(
-                (item for item in self.children if isinstance(item, nextcord.ui.Button) and item.custom_id == "die"))
-            mark_dead.emoji = self.emoji["shroud"]
-            await self.update_message()
-            return True
-        return False
+    @nextcord.ui.button(label="Continue counting", style=nextcord.ButtonStyle.primary)
+    async def continue_counting(self, button: nextcord.ui.Button, interaction: nextcord.Interaction) -> None:
+        await interaction.response.send_modal(CountVoteModal(self.session))
 
-    async def update_message(self):
-        content = f"Nominator: {self.nom.nominator.alias}, Nominee: {self.nom.nominee.alias}"
-        for index, player in enumerate(self.player_list):
-            line = player.alias
-            if not player.can_vote and not self.nom.votes[player.id].vote == confirmed_yes_vote:
-                line = f"~~{line}~~"
-            elif self.nom.votes[player.id].vote == confirmed_yes_vote:
-                line = f"{line}: {voted_yes_emoji}"
-            elif self.nom.votes[player.id].vote == confirmed_no_vote:
-                line = f"{line}: {voted_no_emoji}"
-            elif player.id in self.nom.private_votes:
-                line = f"{line}: {self.nom.private_votes[player.id]}"
-            else:
-                line = f"{line}: {self.nom.votes[player.id].vote}"
-            if player.dead:
-                line = f"{self.emoji['shroud']}{line}"
-            if index == self.player_index:
-                if self.nom.votes[player.id].banshee:
-                    line = f"{self.emoji['banshee']}{line}"
-                if self.nom.votes[player.id].bureaucrat:
-                    line = f"{self.emoji['bureaucrat']}{line}"
-                if self.nom.votes[player.id].thief:
-                    line = f"{self.emoji['thief']}{line}"
-                line = f"{clock_emoji}**{line}**"
-            content += f"\n{line}"
-        await self.message.edit(content=content, view=self)
-
-    async def lock_vote(self, vote: str):
-        self.nom.private_votes.pop(self.player_list[self.player_index].id, None)
-        self.nom.votes[self.player_list[self.player_index].id].vote = vote
-        self.player_index += 1
-        next((item for item in self.children if item.custom_id == "banshee")).style = nextcord.ButtonStyle.grey
-        next((item for item in self.children if item.custom_id == "bureaucrat")).style = nextcord.ButtonStyle.grey
-        next((item for item in self.children if item.custom_id == "thief")).style = nextcord.ButtonStyle.grey
-        next((item for item in self.children if item.custom_id == "die")).disabled = False
-        next((item for item in self.children if item.custom_id == "deadvote")).disabled = False
-        if self.player_index >= len(self.player_list):
-            self.nom.finished = True
-            self.clear_items()
-            self.stop()
-            if self in self.cog.vote_count_views:
-                self.cog.vote_count_views.remove(self)
-        await self.update_message()
-        await self.cog.update_nom_message(self.game_number, self.nom)
-        self.cog.store.save()
-
-    @nextcord.ui.button(label="Count as yes", custom_id="yes", style=nextcord.ButtonStyle.green, row=1)
-    async def vote_yes_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        await self.lock_vote(confirmed_yes_vote)
-        await self.cog.log(self.game_number,
-                           f"{self.author} locked vote of {self.player_list[self.player_index - 1].alias}"
-                           f" on the nomination of {self.nom.nominee.alias} as yes")
-
-    @nextcord.ui.button(label="Count as no", custom_id="no", style=nextcord.ButtonStyle.red, row=1)
-    async def vote_no_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        await self.lock_vote(confirmed_no_vote)
-        await self.cog.log(self.game_number,
-                           f"{self.author} locked vote of {self.player_list[self.player_index - 1].alias}"
-                           f" on the nomination of {self.nom.nominee.alias} as no")
-
-    @nextcord.ui.button(label="Count double", custom_id="banshee", style=nextcord.ButtonStyle.grey, row=1)
-    async def banshee_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        vote = self.nom.votes[self.player_list[self.player_index].id]
-        vote.banshee = not vote.banshee
-        button.style = nextcord.ButtonStyle.blurple if vote.banshee else nextcord.ButtonStyle.grey
-        await self.update_message()
-
-    @nextcord.ui.button(label="Count triple", custom_id="bureaucrat", style=nextcord.ButtonStyle.grey, row=1)
-    async def bureaucrat_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        vote = self.nom.votes[self.player_list[self.player_index].id]
-        vote.bureaucrat = not vote.bureaucrat
-        button.style = nextcord.ButtonStyle.blurple if vote.bureaucrat else nextcord.ButtonStyle.grey
-        await self.update_message()
-
-    @nextcord.ui.button(label="Count negative", custom_id="thief", style=nextcord.ButtonStyle.grey, row=1)
-    async def thief_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        vote = self.nom.votes[self.player_list[self.player_index].id]
-        vote.thief = not vote.thief
-        button.style = nextcord.ButtonStyle.blurple if vote.thief else nextcord.ButtonStyle.grey
-        await self.update_message()
-
-    @nextcord.ui.button(label="Should be dead", custom_id="die", style=nextcord.ButtonStyle.grey, row=2)
-    async def die_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        self.player_list[self.player_index].dead = True
-        button.disabled = True
-        self.cog.store.save()
-        await self.update_message()
-
-    @nextcord.ui.button(label="Loses vote", custom_id="deadvote", style=nextcord.ButtonStyle.grey, row=2)
-    async def deadvote_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        self.player_list[self.player_index].can_vote = False
-        button.disabled = True
-        self.cog.store.save()
-        await self.update_message()
-
-    @nextcord.ui.button(label="Ping current player", custom_id="ping_current", style=nextcord.ButtonStyle.red, row=3)
-    async def ping_current(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        player = get(self.cog.helper.Guild.members, id=self.player_list[self.player_index].id)
-        nom_thread = get(self.cog.helper.get_game_channel(self.game_number).threads,
-                         id=self.cog.town_squares[self.game_number].nomination_thread)
-        await nom_thread.send(f"The clock in the nomination on {self.nom.nominee.alias} is on {player.mention}. "
-                              f"Please vote at next opportunity.")
-
-    @nextcord.ui.button(label="Ping all remaining", custom_id="ping_all", style=nextcord.ButtonStyle.red, row=3)
-    async def ping_all_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer()
-        if await self.check_initial():
-            return
-        nom_thread = get(self.cog.helper.get_game_channel(self.game_number).threads,
-                         id=self.cog.town_squares[self.game_number].nomination_thread)
-        for player in [player for player in self.player_list if
-                       player.can_vote and self.nom.votes[player.id].vote == not_voted_yet]:
-            player_member = get(self.cog.helper.Guild.members, id=player.id)
-            await nom_thread.send(f"{player_member.mention}, reminder: you have not yet voted on the nomination of "
-                                  f"{self.nom.nominee.alias}")
 
 
 async def setup(bot: commands.Bot):
