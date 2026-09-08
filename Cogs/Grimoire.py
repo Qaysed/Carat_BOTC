@@ -6,7 +6,7 @@ from nextcord.ext import commands
 import utility
 from State.queue import QueueStore
 from State.townsquare import Player, TownSquareStore
-from TextQueue import update_queue_message, TextQueue
+from Cogs.TextQueue import update_queue_message, TextQueue
 
 class Grimoire(commands.Cog):
     def __init__(self, bot: commands.Bot, helper: utility.Helper, queues: QueueStore,

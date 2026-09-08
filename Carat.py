@@ -35,7 +35,7 @@ LogHeaderPattern = re.compile(
 
 logging.basicConfig(filename=LogFile, filemode="w",
                     format="%(asctime)s - %(levelname)s: %(message)s",
-                    level=logging.DEBUG)
+                    level=logging.INFO)
 
 try:
     load_dotenv()
