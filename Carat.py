@@ -90,22 +90,18 @@ def load_extensions(paths: List[str]):
 
 
 @bot.event
-async def on_command_error(ctx: commands.Context, error: CommandError):
-    if isinstance(error, commands.CommandNotFound):
-        # filter out emoji like >.> by checking if first character after > is a letter
-        if ctx.message.content[1].isalnum() and not ctx.message.content[1].isdigit():
-            await utility.dm_user(ctx.author, "Command not found. Use >help for a list of commands, "
-                                              "or >HelpMe for a list of commands with explanations.")
-    elif isinstance(error, commands.UserInputError):
-        await utility.dm_user(ctx.author, f"There was an issue with your input. Usage: "
-                                          f"`>{ctx.command.name} {ctx.command.signature}`.")
-        logging.info(f"Command {ctx.command.name} was used with incorrect input: {ctx.message.content}")
-    elif isinstance(error, commands.errors.CheckFailure):
-        logging.warning(
-            f"{ctx.command.name} command was ignored due to the command's check failing")
+async def on_application_command_error(interaction: Interaction, error: Exception):
+    traceback_text = utility.traceback_text(error)
+    logging.exception(f"Ignoring exception in command {interaction.application_command.name}:\n{traceback_text}")
+    if isinstance(error, nextcord.HTTPException) and error.code == 429:
+        user_warning = "Ran into a rate limit. Try again in a bit."
     else:
-        traceback_text = utility.traceback_text(error)
-        logging.exception(f"Ignoring exception in command {ctx.command}:\n{traceback_text}")
+        user_warning = ("Ran into internal error. You can try again, "
+                        "otherwise you may need to contact a developer")
+    if interaction.response.is_done():
+        await interaction.followup.send(user_warning, ephemeral=True)
+    else:
+        await interaction.send(user_warning, ephemeral=True)
 
 
 def get_level(line: str) -> Optional[int]:
@@ -145,7 +141,7 @@ async def SendLogs(interaction: Interaction,
         bytes_data = io.BytesIO("".join(items).encode("utf-8"))
         await interaction.followup.send("Logs", file=nextcord.File(bytes_data, f"Carat_{level}_{limit}_{utcnow().isoformat()}.log"), ephemeral=True)
     else:
-        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         logging.warning(f"{interaction.user.display_name} (id: {interaction.user.id}) attempted to access Carat's logs")
 
 
@@ -182,7 +178,7 @@ def download_file(url, local_directory, local_filename):
 @bot.slash_command(name="reload_cogs", description="Gets current versions of the extension files and reloads them")
 async def ReloadCogs(interaction: Interaction):
     if not await bot.is_owner(interaction.user):
-        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         return
     await interaction.response.defer(ephemeral=True)
     logging.warning("Starting the ReloadCogs process")
@@ -248,7 +244,7 @@ async def ReloadCogs(interaction: Interaction):
 @bot.slash_command(name="reload_main_files", description="Downloads updated Carat.py and utility.py from GitHub.")
 async def ReloadMainFiles(interaction: Interaction):
     if not await bot.is_owner(interaction.user):
-        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         return
     await interaction.response.defer(ephemeral=True)
     logging.warning("Attempting to update Carat.py and utility.py")
@@ -282,7 +278,7 @@ async def Restart(interaction: Interaction):
         # bot.close() finishes execution of bot.run(), so Carat terminates and is restarted by the loop in AutoRestart
         await bot.close()
     else:
-        await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+        await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         logging.warning(f"{interaction.user.display_name} (id: {interaction.user.id}) attempted to restart Carat")
 
 

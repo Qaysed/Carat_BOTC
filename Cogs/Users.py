@@ -30,7 +30,7 @@ class Users(commands.Cog):
                          p11: nextcord.Member = nextcord.SlashOption(required=False),
                          p12: nextcord.Member = nextcord.SlashOption(required=False)):
         if game not in utility.PotentialGames:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
         if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
@@ -51,7 +51,7 @@ class Users(commands.Cog):
                     return
             await interaction.followup.send(f"Added {len(players)} users to game {game}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @player.subcommand(name="remove", description="Remove players from a game.")
     async def player_remove(self, interaction: nextcord.Interaction,
@@ -69,7 +69,7 @@ class Users(commands.Cog):
                             p11: nextcord.Member = nextcord.SlashOption(required=False),
                             p12: nextcord.Member = nextcord.SlashOption(required=False)):
         if game not in utility.PotentialGames:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
         if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
@@ -90,7 +90,7 @@ class Users(commands.Cog):
                     return
             await interaction.followup.send(f"Removed {len(players)} users from game {game}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @nextcord.slash_command(name="kibitz", description="Manage game kibitzers.")
     async def kibitz(self, interaction: nextcord.Interaction):
@@ -112,7 +112,7 @@ class Users(commands.Cog):
                          k11: nextcord.Member = nextcord.SlashOption(required=False),
                          k12: nextcord.Member = nextcord.SlashOption(required=False)):
         if game not in utility.PotentialGames:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
         if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
             kibitz_role = self.helper.get_kibitz_role(game)
@@ -130,7 +130,7 @@ class Users(commands.Cog):
                     return
             await interaction.followup.send(f"Added {len(kibitzers)} users to the {game} kibitz")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @kibitz.subcommand(name="remove", description="Remove kibitzers from a game.")
     async def kibitz_remove(self, interaction: nextcord.Interaction,
@@ -148,7 +148,7 @@ class Users(commands.Cog):
                             k11: nextcord.Member = nextcord.SlashOption(required=False),
                             k12: nextcord.Member = nextcord.SlashOption(required=False)):
         if game not in utility.PotentialGames:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
         if await self.helper.authorize_st_command(interaction.user, game):
             await interaction.response.defer()
@@ -169,7 +169,7 @@ class Users(commands.Cog):
                     return
             await interaction.followup.send(f"Removed {len(kibitzers)} users from the {game} kibitz")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
 
 def setup(bot: commands.Bot):

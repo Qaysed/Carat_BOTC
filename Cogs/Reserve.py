@@ -255,14 +255,14 @@ class Reserve(commands.Cog):
                           min_players: int = nextcord.SlashOption(required=True, min_value=0), 
                           start: str = nextcord.SlashOption(required = True, description="Accepted date formats are YYYY-MM-DD, MM-DD or the number of days until the date.")):
         if any(entry_owner == interaction.user.id for entry_owner in self.entries):
-            await utility.deny_app_command(interaction, utility.DenialReason.AlreadyReserved)
+            await utility.deny_command(interaction, utility.DenialReason.AlreadyReserved)
             return
         if self.queue_store.get_queue(interaction.user.id) is not None:
-            await utility.deny_app_command(interaction, utility.DenialReason.InQueue)
+            await utility.deny_command(interaction, utility.DenialReason.InQueue)
             return
         start_date = parse_date(start)
         if start_date is None or start_date - date.today() < timedelta(days=min_advance_days):
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidStartDate)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidStartDate)
             return
         if isinstance(interaction.channel, nextcord.Thread) and interaction.channel.parent == self.helper.ReservingForum \
                 and interaction.user == interaction.channel.owner:
@@ -272,14 +272,14 @@ class Reserve(commands.Cog):
             await interaction.followup.send(f"Registered your entry for {start_date.isoformat()}")
             await self.helper.log(f"{interaction.user.mention} has reserved an RSVP game for {start_date}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotRSVPForum)
+            await utility.deny_command(interaction, utility.DenialReason.NotRSVPForum)
 
     @reserve.subcommand(name="signups", description="Posts a signup message for your RSVP game.")
     async def signups(self, interaction: nextcord.Interaction, 
                       max_players: int = nextcord.SlashOption(required=True), 
                       script: str = nextcord.SlashOption(required=True)):
         if interaction.user.id not in self.entries:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+            await utility.deny_command(interaction, utility.DenialReason.NoReservation)
         else:
             await interaction.response.defer(ephemeral=True)
             entry = self.entries[interaction.user.id]
@@ -295,7 +295,7 @@ class Reserve(commands.Cog):
     async def add_st(self, interaction: nextcord.Interaction, 
                      co_st: nextcord.Member = nextcord.SlashOption(required=True)):
         if interaction.user.id not in self.entries:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+            await utility.deny_command(interaction, utility.DenialReason.NoReservation)
         else:
             await interaction.response.defer(ephemeral=True)
             entry = self.entries[interaction.user.id]
@@ -308,7 +308,7 @@ class Reserve(commands.Cog):
     async def remove_st(self, interaction: nextcord.Interaction, 
                          co_st: nextcord.Member = nextcord.SlashOption(required=True)):
         if interaction.user.id not in self.entries:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+            await utility.deny_command(interaction, utility.DenialReason.NoReservation)
         else:
             await interaction.response.defer(ephemeral=True)
             entry = self.entries[interaction.user.id]
@@ -322,7 +322,7 @@ class Reserve(commands.Cog):
                               channel_type: str = nextcord.SlashOption(required=True, choices=["Base","Regular","Experimental"]), 
                               availability: str = nextcord.SlashOption(required=True, default="ASAP")):
         if interaction.user.id not in self.entries:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+            await utility.deny_command(interaction, utility.DenialReason.NoReservation)
         else:
             await interaction.response.defer(ephemeral=True)
             entry = self.entries[interaction.user.id]
@@ -338,7 +338,7 @@ class Reserve(commands.Cog):
     @reserve.subcommand(name="cancel_game", description="Cancels your reserved game.")
     async def cancel_game(self, interaction: nextcord.Interaction):
         if interaction.user.id not in self.entries:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+            await utility.deny_command(interaction, utility.DenialReason.NoReservation)
         else:
             await interaction.response.defer(ephemeral=True)
             thread = self.entries[interaction.user.id].thread
@@ -393,7 +393,7 @@ class Reserve(commands.Cog):
             await interaction.followup.send(f"RSVP game created for {st.display_name}")
             await self.helper.log(f"{interaction.user.mention} has created an r channel game for {st.mention}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @reserve.subcommand(name="remove_reservation", description="Removes the reservation of the given user. Moderator only!")
     async def remove_reservation(self, interaction: nextcord.Interaction, 
@@ -407,7 +407,7 @@ class Reserve(commands.Cog):
                 thread = self.announced[st.id].thread
                 self.remove_announced(st.id)
             else:
-                await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+                await utility.deny_command(interaction, utility.DenialReason.NoReservation)
                 return
             thread = get(self.helper.ReservingForum.threads, id=thread)
             await thread.send("This game has been cancelled")
@@ -418,7 +418,7 @@ class Reserve(commands.Cog):
                 await interaction.followup.send(f"You removed {st.id}'s reservation")
                 await self.helper.log(f"{interaction.user.mention} has removed {st.id}'s reservation")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @reserve.subcommand(name="change_start_date", description="Moderator Only! Changes the start date of the reservation of the given user.")
     async def change_start_date(self, interaction: nextcord.Interaction, 
@@ -428,7 +428,7 @@ class Reserve(commands.Cog):
             await interaction.response.defer(ephemeral=True)
             start_day = parse_date(new_date)
             if start_day is None:
-                await utility.deny_app_command(interaction, utility.DenialReason.InvalidStartDate)
+                await utility.deny_command(interaction, utility.DenialReason.InvalidStartDate)
                 return
             if st.id in self.entries:
                 entry = self.entries[st.id]
@@ -440,14 +440,14 @@ class Reserve(commands.Cog):
                 self.entries[st.id] = entry
                 self.remove_announced(st.id)
             else:
-                await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+                await utility.deny_command(interaction, utility.DenialReason.NoReservation)
                 return
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(f"This game's start date has been changed to {entry.date}")
             await interaction.followup.send(f"Start date for {st.display_name}'s RSVP game changed to {entry.date}")
             await self.helper.log(f"{interaction.user.mention} has changed {st.mention}'s reservation start date to {start_day}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @reserve.subcommand(name="change_player_minimum", description="Changes the required number of players for the reservation of the given member. Moderator only")
     async def change_player_minimum(self, interaction: nextcord.Interaction, 
@@ -471,14 +471,14 @@ class Reserve(commands.Cog):
                                                     f"start date and the new minimum would not affect it at this point.")
                     return
             else:
-                await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+                await utility.deny_command(interaction, utility.DenialReason.NoReservation)
                 return
             thread = get(self.helper.ReservingForum.threads, id=entry.thread)
             await thread.send(f"This game's minimum player count has been changed to {new_min}")
             await interaction.followup.send(f"Player minimum for {st.display_name}'s game changed to {new_min}")
             await self.helper.log(f"{interaction.user.mention} has changed {st.mention}'s reservation min player count to {new_min}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @reserve.subcommand(name="remove_player", description="Moderator only! Manually removes a player from a game")
     async def remove_player(self, interaction: nextcord.Interaction, 
@@ -486,7 +486,7 @@ class Reserve(commands.Cog):
                             st: nextcord.Member = nextcord.SlashOption(required=True)):
         if await self.helper.authorize_mod_command(interaction.user):
             if st.id not in self.entries:
-                await utility.deny_app_command(interaction, utility.DenialReason.NoReservation)
+                await utility.deny_command(interaction, utility.DenialReason.NoReservation)
                 return
             await interaction.response.defer(ephemeral=True)
             entry = self.entries[st.id] 
@@ -501,7 +501,7 @@ class Reserve(commands.Cog):
                                                 f"you might need to refresh the sign up list for this to appear")
                 await self.helper.log(f"{interaction.user.mention} has removed {player.id} from {st.mention}'s RSVP entry")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     # will run every day at 5 pm UTC
     # (figure that's a good choice to maximize chances of the ST seeing it not much later)
@@ -538,7 +538,7 @@ class Reserve(commands.Cog):
             bytes_data = io.BytesIO(json_str.encode("utf-8"))
             await interaction.send(f"Reserve Entries json", file=nextcord.File(bytes_data, f"Entries.json"), ephemeral=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
 
 class PreSignupView(nextcord.ui.View):

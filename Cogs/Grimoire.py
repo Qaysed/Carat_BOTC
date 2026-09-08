@@ -26,15 +26,15 @@ class Grimoire(commands.Cog):
         if interaction.user is None:
             raise ValueError("Command requires a user")
         if not isinstance(interaction.user, nextcord.Member):
-            await utility.deny_app_command(interaction, utility.DenialReason.MemberCommand)
+            await utility.deny_command(interaction, utility.DenialReason.MemberCommand)
             return
         st_role = self.helper.get_st_role(game_number)
         if st_role is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoSTRole)
+            await utility.deny_command(interaction, utility.DenialReason.NoSTRole)
             return
         game_channel = self.helper.get_game_channel(game_number)
         if game_channel is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
         if len(st_role.members) == 0 or await self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer()
@@ -58,7 +58,7 @@ class Grimoire(commands.Cog):
             for queue in removed:
                 await update_queue_message(queue, self.helper)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.AlreadySTS)
+            await utility.deny_command(interaction, utility.DenialReason.AlreadySTS)
         await self.helper.log(f"{interaction.user.mention} has run the grimoire claim command for game {game_number}")
         if self.helper.SecondaryOutputChannel:
             await self.helper.SecondaryOutputChannel.send(f"{interaction.user.mention} has run the grimoire claim command for game {game_number}")
@@ -70,20 +70,20 @@ class Grimoire(commands.Cog):
         if interaction.user is None:
             raise ValueError("Command requires a user")
         if not isinstance(interaction.user, nextcord.Member):
-            await utility.deny_app_command(interaction, utility.DenialReason.MemberCommand)
+            await utility.deny_command(interaction, utility.DenialReason.MemberCommand)
             return
         if await self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             st_role = self.helper.get_st_role(game_number)
             if st_role is None:
-                await utility.deny_app_command(interaction, utility.DenialReason.NoSTRole)
+                await utility.deny_command(interaction, utility.DenialReason.NoSTRole)
                 return
             await member.add_roles(st_role)
             await interaction.user.remove_roles(st_role)
             await interaction.followup.send("You have assigned the current ST role for game " + str(game_number) +
                                             " to " + member.display_name, ephemeral=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
         await self.helper.log(
             f"{interaction.user.mention} has run the grimoire give command on {member.display_name} for game {game_number}")
@@ -101,7 +101,7 @@ class Grimoire(commands.Cog):
             if queue is not None and len(st_role.members) == 0 and game_number[0] != "r":
                 await queue.announce_free_channel(game_number, 0)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         await self.helper.log(f"{interaction.user.mention} has run the grimoire drop command for game {game_number}")
 
     @grimoire.subcommand(name="share", description="Gives another member the ST role without taking it away from you")
@@ -116,7 +116,7 @@ class Grimoire(commands.Cog):
                 self.townsquares.save()
             await interaction.followup.send(f"You have added {member.display_name} as a ST.", ephemeral=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
         await self.helper.log(
             f"{interaction.user.mention} has run the grimoire share command on {member.display_name} for game {game_number}")

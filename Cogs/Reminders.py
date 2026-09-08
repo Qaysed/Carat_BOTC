@@ -53,7 +53,7 @@ class Reminders(commands.Cog):
                   ping_players: bool = nextcord.SlashOption(required=False, default=True, description="Would you like the reminders to ping the players, default is true"),):
         game_channel = self.helper.get_game_channel(game_number)
         if game_channel is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
 
         if await self.helper.authorize_st_command(interaction.user, game_number):
@@ -69,7 +69,7 @@ class Reminders(commands.Cog):
                             times.append(parse_hours(t))
                     except ValueError:
                         await interaction.followup.send(f"Could not parse time: {t.strip()}")
-                        await utility.deny_app_command(interaction, utility.DenialReason.InvalidReminderTime)
+                        await utility.deny_command(interaction, utility.DenialReason.InvalidReminderTime)
                         return
             mention = ""
             if ping_players:
@@ -90,14 +90,14 @@ class Reminders(commands.Cog):
             self.store.save()
             await interaction.followup.send(f"Reminders set, ending {times[-1]} hours from now")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @reminders.subcommand(name="delete", description="Deletes the reminders for the given game number.")
     async def delete(self, interaction: nextcord.Interaction, 
                      game_number: str = nextcord.SlashOption(required=True)):
         game_channel = self.helper.get_game_channel(game_number)
         if game_channel is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
         
         if await self.helper.authorize_st_command(interaction.user, game_number):
@@ -106,14 +106,14 @@ class Reminders(commands.Cog):
             self.store.save()
             await interaction.followup.send("Reminders deleted")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @reminders.subcommand(name="show", description="Shows all reminders for the given game number.")
     async def show(self, interaction: nextcord.Interaction, 
                    game_number: str = nextcord.SlashOption(required=True)):
         game_channel = self.helper.get_game_channel(game_number)
         if game_channel is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
             return
         
         await interaction.response.defer(ephemeral=True)

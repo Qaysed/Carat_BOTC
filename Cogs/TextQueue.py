@@ -131,7 +131,7 @@ class TextQueue(commands.Cog):
             self.store.save()
             await interaction.followup.send(f"{channel_type} queue created!")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         await self.helper.log(f"{interaction.user.mention} has run the queue initialize command in {interaction.channel.mention}")
 
     @queue.subcommand(name="join", description="Adds you to the end of the text game queue for your chosen channel type.")
@@ -141,10 +141,10 @@ class TextQueue(commands.Cog):
                          availability: str = nextcord.SlashOption(required=True), 
                          notes: str = nextcord.SlashOption(required=False, default=None)):
         if interaction.user.id in self.reserve_store.entries:
-            await utility.deny_app_command(interaction, utility.DenialReason.AlreadyReserved)
+            await utility.deny_command(interaction, utility.DenialReason.AlreadyReserved)
             return
         if channel_type not in self.queues.keys():
-            await utility.deny_app_command(interaction, utility.DenialReason.QueueTypeNotInitialised)
+            await utility.deny_command(interaction, utility.DenialReason.QueueTypeNotInitialised)
             return
         if self.get_queue(interaction.user.id) is None:
             await interaction.response.defer() 
@@ -166,13 +166,13 @@ class TextQueue(commands.Cog):
                                                 f"displayed currently, but it has been added to the queue.", ephemeral=True)
             await self.helper.log(f"{interaction.user.mention} has joined the {channel_type} queue")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.InQueue)
+            await utility.deny_command(interaction, utility.DenialReason.InQueue)
 
     @queue.subcommand(name="leave", description="Removes you from the queue you are in currently.")
     async def leave(self, interaction: nextcord.Interaction):
         queue = self.get_queue(interaction.user.id)
         if not queue:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotInQueue)
+            await utility.deny_command(interaction, utility.DenialReason.NotInQueue)
             return
 
         await interaction.response.defer()
@@ -190,7 +190,7 @@ class TextQueue(commands.Cog):
                        number_of_spots: int = nextcord.SlashOption(required=True, min_value=1)):
         queue = self.get_queue(interaction.user.id)
         if not queue:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotInQueue)
+            await utility.deny_command(interaction, utility.DenialReason.NotInQueue)
             return
         await interaction.response.defer()
         for index, entry in enumerate(queue.entries):
@@ -211,7 +211,7 @@ class TextQueue(commands.Cog):
                          notes: str = nextcord.SlashOption(required=False, default=None)):
         queue = self.get_queue(interaction.user.id)
         if not queue:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotInQueue)
+            await utility.deny_command(interaction, utility.DenialReason.NotInQueue)
             return
         await interaction.response.defer()
         entry = next(e for e in queue.entries if e.st == interaction.user.id)
@@ -235,7 +235,7 @@ class TextQueue(commands.Cog):
                          notes: str = nextcord.SlashOption(required=True)):
         queue = self.get_queue(interaction.user.id)
         if queue is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotInQueue)
+            await utility.deny_command(interaction, utility.DenialReason.NotInQueue)
             return
         await interaction.response.defer()
         entry = next(e for e in queue.entries if e.st == interaction.user.id)
@@ -275,7 +275,7 @@ class TextQueue(commands.Cog):
                                                 "no announcement message has been able to be sent to the queue channel.")
                 await self.helper.log(f"{interaction.user.mention} has run the remove command on {member.id}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @queue.subcommand(name="move_to_spot", description="Moves the queue entry of the given user to the given spot in their queue. Moderator only!")
     async def move_to_spot(self, interaction: nextcord.Interaction, 
@@ -299,7 +299,7 @@ class TextQueue(commands.Cog):
             await interaction.followup.send(f"Moved {member.display_name} to spot {spot}")
             await self.helper.log(f"{interaction.user.mention} has run the move_to_spot command on {member.display_name}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @queue.subcommand(name="get_json", description="Developer command! Sends the user a json of all the queues.")
     async def get_json(self, interaction: nextcord.Interaction):
@@ -311,7 +311,7 @@ class TextQueue(commands.Cog):
             bytes_data = io.BytesIO(json_str.encode("utf-8"))
             await interaction.send(f"Text Game Queue json", file=nextcord.File(bytes_data, f"Entries.json"), ephemeral=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
 
 class FreeChannelNotificationView(nextcord.ui.View):

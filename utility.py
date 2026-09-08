@@ -74,16 +74,7 @@ async def dm_user(user: Union[nextcord.User, nextcord.Member], content: str) -> 
         logging.exception(f"Could not DM {user}: {e}")
         return False
 
-
-async def deny_command(ctx: commands.Context, reason: Optional[str]):
-    await ctx.message.add_reaction(DeniedEmoji)
-    if reason is not None:
-        await dm_user(ctx.author, reason)
-        logging.info(f"The {ctx.command.name} command was stopped against {ctx.author.name} because of {reason}")
-    else:
-        logging.info(f"The {ctx.command.name} command was stopped against {ctx.author.name}")
-
-async def deny_app_command(interaction: nextcord.Interaction, reason: Union[DenialReason, str]):
+async def deny_command(interaction: nextcord.Interaction, reason: Union[DenialReason, str]):
     if interaction.application_command is None:
         raise ValueError("interaction.application_command is None")
     if interaction.user is None:

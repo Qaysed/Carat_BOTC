@@ -28,17 +28,17 @@ class Signup(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         st_role = self.helper.get_st_role(game_number)
         if st_role is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoSTRole)
+            await utility.deny_command(interaction, utility.DenialReason.NoSTRole)
             return
         st_names = [st.display_name for st in st_role.members]
         player_role = self.helper.get_game_role(game_number)
         if player_role is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPlayerRole)
+            await utility.deny_command(interaction, utility.DenialReason.NoPlayerRole)
             return
         player_names = [player.display_name for player in player_role.members]
         kibitz_role = self.helper.get_kibitz_role(game_number)
         if player_role is None:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoKibitzRole)
+            await utility.deny_command(interaction, utility.DenialReason.NoKibitzRole)
             return
         kibitz_names = [kibitzer.display_name for kibitzer in kibitz_role.members]
 
@@ -82,7 +82,7 @@ class Signup(commands.Cog):
             await self.helper.get_game_channel(game_number).send(embed=embed, view=SignupView(self.helper))
             await interaction.followup.send("Sign up list sent!")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
 
 class SignupView(nextcord.ui.View):

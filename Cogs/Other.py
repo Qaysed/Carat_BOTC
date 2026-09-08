@@ -88,10 +88,10 @@ class Other(commands.Cog):
                            p2: nextcord.Member = nextcord.SlashOption(required=False, name="player2"),
                            p3: nextcord.Member = nextcord.SlashOption(required=False, name="player3"),
                            p4: nextcord.Member = nextcord.SlashOption(required=False, name="player4"),
-                           p5: nextcord.Member = nextcord.SlashOption(required=False, name="player5"),):
+                           p5: nextcord.Member = nextcord.SlashOption(required=False, name="player5")):
         channel = interaction.channel.parent if isinstance(interaction.channel, nextcord.Thread) else interaction.channel
         if not isinstance(channel, nextcord.TextChannel):
-            await utility.deny_app_command(interaction, utility.DenialReason.NotATextChannel)
+            await utility.deny_command(interaction, utility.DenialReason.NotATextChannel)
             return
         await interaction.response.defer()
         auth_perms = channel.permissions_for(interaction.user)
@@ -113,7 +113,18 @@ class Other(commands.Cog):
                                                       f"were not added to \"{title}\"", ephemeral=True)
             await interaction.followup.send(f"Started whisper with {", ".join(whisperers)}")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
+
+    # shorter alias for StartWhisper
+    @nextcord.slash_command(name="sw", description="Start a private thread with the chosen user(s)")
+    async def sw(self, interaction: nextcord.Interaction,
+                           title: str = nextcord.SlashOption(required=True, description="Thread title"),
+                           p1: nextcord.Member = nextcord.SlashOption(required=False, name="player1"),
+                           p2: nextcord.Member = nextcord.SlashOption(required=False, name="player2"),
+                           p3: nextcord.Member = nextcord.SlashOption(required=False, name="player3"),
+                           p4: nextcord.Member = nextcord.SlashOption(required=False, name="player4"),
+                           p5: nextcord.Member = nextcord.SlashOption(required=False, name="player5")):
+        await self.StartWhisper(interaction, title, p1, p2, p3, p4, p5)
 
     @nextcord.slash_command(name="create_threads", description="Create an ST thread for each player")
     async def CreateThreads(self, interaction: nextcord.Interaction, game_number: str):
@@ -128,7 +139,7 @@ class Other(commands.Cog):
             modal = CreateThreadsModal(game_channel, players, sts, townsquare)
             await interaction.response.send_modal(modal)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @nextcord.slash_command(name="send_to_threads", description="Send a message to each ST thread")
     async def SendToThreads(self, interaction: nextcord.Interaction, game_number: str):
@@ -137,7 +148,7 @@ class Other(commands.Cog):
             modal = SendToThreadsModal(game_channel)
             await interaction.response.send_modal(modal)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
 
 # TODO: figure out if this is still needed/improve documentation for each command so it is no longer needed

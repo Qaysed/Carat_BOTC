@@ -28,7 +28,7 @@ class Game(commands.Cog):
                 f"Remember to give your ST(s) any feedback you may have!\n" +
                 f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A")
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
         await self.helper.log(f"{interaction.user.mention} has run the open kibitz command on game {game_number}")
 
@@ -42,7 +42,7 @@ class Game(commands.Cog):
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
             await interaction.followup.send("Kibitz has been closed", ephemeral=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
         await self.helper.log(f"{interaction.user.mention} has run the close kibitz command on game {game_number}")
 
@@ -74,7 +74,7 @@ class Game(commands.Cog):
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
         await self.helper.log(f"{interaction.user.mention} has run the end game command on game {game_number}")
 
@@ -88,12 +88,12 @@ class Game(commands.Cog):
             st_role = self.helper.get_st_role(game_number)
             game_channel = self.helper.get_game_channel(game_number)
             if game_channel is None:
-                await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+                await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
                 return
             game_position = game_channel.position
             archive_category = self.helper.ArchiveCategory
             if len(archive_category.channels) == 50:
-                await utility.deny_app_command(interaction, utility.DenialReason.ArchiveFull)
+                await utility.deny_command(interaction, utility.DenialReason.ArchiveFull)
                 await interaction.followup.send(f"{self.helper.ModRole.mention} The archive category is full, so this channel "
                                                 f"cannot be archived")
                 return
@@ -117,7 +117,7 @@ class Game(commands.Cog):
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
             await interaction.followup.send("Game successfully archived! Please drop the ST role at your soonest convenience.", ephemeral=True)
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.InvalidGame)
+            await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
 
         await self.helper.log(f"{interaction.user.mention} has run the archive game command for game {game_number}")
 

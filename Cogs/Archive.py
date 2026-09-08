@@ -85,7 +85,7 @@ class Archive(commands.Cog):
             await self.helper.log(f"{interaction.user.display_name} has run the 'archive include' command in {thread.mention}")
             self.store.save()
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotAThread)
+            await utility.deny_command(interaction, utility.DenialReason.NotAThread)
 
     @archive.subcommand(name="exclude", description="Marks a thread as to be excluded from the archive. Use in the thread you want to exclude.")
     async def exclude(self, interaction: nextcord.Interaction):
@@ -113,7 +113,7 @@ class Archive(commands.Cog):
             await self.helper.log(f"{interaction.user.display_name} has run the 'archive exclude' command in {thread.mention}")
             self.store.save()
         else:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotAThread)
+            await utility.deny_command(interaction, utility.DenialReason.NotAThread)
 
     # TODO: enable command in archive servers, load archive servers from .env
     @archive.subcommand(name="claim_role", description="Claims your unique role for this server, this allows you to view threads of games you STed.")
@@ -121,7 +121,7 @@ class Archive(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         # TODO: Remove hard coded archive server ids - probably via a set up command or .env-dist
         if interaction.guild_id is None or interaction.guild_id not in [959219314014163036, 1203126128693354516, 1317487976309329920, 1447544308675907656]:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotArchiveServer)
+            await utility.deny_command(interaction, utility.DenialReason.NotArchiveServer)
             return
         archive_server = interaction.guild
         unique_role_name = str(interaction.user.id)
@@ -137,7 +137,7 @@ class Archive(commands.Cog):
                                  st: nextcord.Member = nextcord.SlashOption(required=True), 
                                  archive_channel_id: str = nextcord.SlashOption(required=False, default=None)):
         if interaction.channel is None or interaction.channel.type != nextcord.ChannelType.text:
-            await utility.deny_app_command(interaction, utility.DenialReason.NotATextChannel)
+            await utility.deny_command(interaction, utility.DenialReason.NotATextChannel)
             return 
         # Ivy Access
         if await self.helper.authorize_mod_command(interaction.user) or interaction.user.id == ivy_id:
@@ -220,7 +220,7 @@ class Archive(commands.Cog):
                 message += f" {errors} messages caused unknown errors and were not archived."
                 await interaction.followup.send(message, ephemeral=True)
         else:
-            await utility.deny_app_command(interaction,  utility.DenialReason.NoPermission)
+            await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @tasks.loop(hours=24)
     async def adjust_thread_archive_time():
