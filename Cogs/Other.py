@@ -111,7 +111,7 @@ class Other(commands.Cog):
                 else:
                     await interaction.followup.send(f"{player.display_name} cannot send messages in threads so they "
                                                       f"were not added to \"{title}\"", ephemeral=True)
-            await interaction.followup.send(f"Started whisper with {", ".join(whisperers)}")
+            await interaction.followup.send(f"Started whisper with {", ".join([w.display_name for w in whisperers])}")
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
