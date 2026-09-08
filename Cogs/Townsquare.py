@@ -784,6 +784,7 @@ class Townsquare(commands.Cog):
     @nextcord.slash_command(name="count_votes")
     async def CountVotes(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str):
         """Start a private, per-player modal flow for counting an active nomination."""
+        await interaction.response.defer(ephemeral=True)
         if not await self.helper.authorize_st_command(interaction.user, game_number):
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
             return
