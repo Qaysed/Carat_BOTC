@@ -84,12 +84,13 @@ async def deny_command(ctx: commands.Context, reason: Optional[str]):
         logging.info(f"The {ctx.command.name} command was stopped against {ctx.author.name}")
 
 async def deny_app_command(interaction: nextcord.Interaction, reason: Union[DenialReason, str]):
-    if interaction.application_command is None:
-        raise ValueError("interaction.application_command is None")
     if interaction.user is None:
         raise ValueError("interaction.user is None")
     reason_str = reason.value if isinstance(reason, DenialReason) else reason
-    logging.info(f"The {interaction.application_command.name} command by {interaction.user.name} was stopped. Reason: {reason_str}")
+    if interaction.application_command:
+        logging.info(f"The {interaction.application_command.name} command by {interaction.user.name} was stopped. Reason: {reason_str}")
+    else:
+        logging.info(f"An unknown command by {interaction.user.name} was stopped. Reason: {reason_str}")
     if interaction.response.is_done():
         await interaction.followup.send(reason_str, ephemeral=True)
     else:
@@ -139,7 +140,7 @@ class Helper:
             self.SecondaryOutputChannel = get(self.Guild.channels, id=int(os.environ['SECONDARY_OUTPUT_CHANNEL']))
         except:
             self.SecondaryOutputChannel = None
-            logging.warning("Count not load secondary output channel from enviroment, continuing with it")
+            logging.warning("Could not load secondary output channel from enviroment, continuing without it")
         if self.SecondaryOutputChannel and not isinstance(self.SecondaryOutputChannel, nextcord.abc.Messageable):
             logging.warning("Secondary output channel not messageable, continuing without it")
         self.StorageLocation = os.environ['STORAGE_LOCATION']

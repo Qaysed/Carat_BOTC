@@ -103,7 +103,7 @@ class Other(commands.Cog):
                 type=nextcord.ChannelType.private_thread,
                 reason=f"Starting whisper for {interaction.user.display_name}"
             )
-            whisperers = [p for p in [interaction.user, p1, p2, p3, p4, p5 ] if p is not None]
+            whisperers: List[nextcord.Member] = [p for p in [interaction.user, p1, p2, p3, p4, p5 ] if p is not None]
             for player in whisperers:
                 permissions = channel.permissions_for(player)
                 if permissions.send_messages_in_threads:
@@ -111,9 +111,19 @@ class Other(commands.Cog):
                 else:
                     await interaction.followup.send(f"{player.display_name} cannot send messages in threads so they "
                                                       f"were not added to \"{title}\"", ephemeral=True)
-            await interaction.followup.send(f"Started whisper with {", ".join(whisperers)}")
+            await interaction.followup.send(f"Started whisper with {", ".join([w.display_name for w in whisperers])}")
         else:
             await utility.deny_app_command(interaction, utility.DenialReason.NoPermission)
+
+    @nextcord.slash_command(name="sw", description="Start a private thread with the chosen user(s), shorthand for /start_whisper")
+    async def sw(self, interaction: nextcord.Interaction,
+                 title: str = nextcord.SlashOption(required=True, description="Thread title"),
+                 p1: nextcord.Member = nextcord.SlashOption(required=False, name="player1"),
+                 p2: nextcord.Member = nextcord.SlashOption(required=False, name="player2"),
+                 p3: nextcord.Member = nextcord.SlashOption(required=False, name="player3"),
+                 p4: nextcord.Member = nextcord.SlashOption(required=False, name="player4"),
+                 p5: nextcord.Member = nextcord.SlashOption(required=False, name="player5"),):
+        await self.StartWhisper(interaction, title, p1, p2, p3, p4, p5)
 
     @nextcord.slash_command(name="create_threads", description="Create an ST thread for each player")
     async def CreateThreads(self, interaction: nextcord.Interaction, game_number: str):

@@ -685,7 +685,7 @@ class Townsquare(commands.Cog):
                                             "you cannot set your vote to it.")
             return
         if game_role in interaction.user.roles:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             for nominee_identifier in nominee_identifiers:
                 nominee = await self.get_game_participant(game_number, nominee_identifier)
                 if not nominee:
@@ -1013,6 +1013,7 @@ class Townsquare(commands.Cog):
         if game_number not in self.town_squares:
             await utility.deny_app_command(interaction, utility.DenialReason.NoTownSquare)
             return
+        await interaction.response.defer(ephemeral=True)
         nominee = await self.get_game_participant(game_number, nominee_identifier)
         if not nominee:
             await utility.deny_app_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
@@ -1025,7 +1026,8 @@ class Townsquare(commands.Cog):
         game_role = self.helper.get_game_role(game_number)
         content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji,
                                             include_game_role_mention=False)
-        await interaction.response.send_message(content=content, embed=embed, ephemeral=not public)
+        await interaction.followup.send("Sending list...", ephemeral=True) # to clear the "ephemeral" followup
+        await interaction.followup.send(content=content, embed=embed, ephemeral=not public)
 
     @nextcord.slash_command(name="get_ts_status")
     async def GetTSStatus(self, interaction: nextcord.Interaction, game_number: str):
