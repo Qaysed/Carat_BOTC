@@ -128,7 +128,7 @@ class Other(commands.Cog):
 
     @nextcord.slash_command(name="create_threads", description="Create an ST thread for each player")
     async def CreateThreads(self, interaction: nextcord.Interaction, game_number: str):
-        if await self.helper.authorize_st_command(interaction.user, game_number):
+        if self.helper.authorize_st_command(interaction.user, game_number):
             game_channel = self.helper.get_game_channel(game_number)
             players = self.helper.get_game_role(game_number).members
             if game_number in self.townsquares.town_squares:
@@ -143,7 +143,7 @@ class Other(commands.Cog):
 
     @nextcord.slash_command(name="send_to_threads", description="Send a message to each ST thread")
     async def SendToThreads(self, interaction: nextcord.Interaction, game_number: str):
-        if await self.helper.authorize_st_command(interaction.user, game_number):
+        if self.helper.authorize_st_command(interaction.user, game_number):
             game_channel = self.helper.get_game_channel(game_number)
             modal = SendToThreadsModal(game_channel)
             await interaction.response.send_modal(modal)

@@ -140,7 +140,7 @@ class Archive(commands.Cog):
             await utility.deny_command(interaction, utility.DenialReason.NotATextChannel)
             return 
         # Ivy Access
-        if await self.helper.authorize_mod_command(interaction.user) or interaction.user.id == ivy_id:
+        if self.helper.authorize_mod_command(interaction.user) or interaction.user.id == ivy_id:
             await interaction.response.defer()
 
             channel_to_archive = interaction.channel

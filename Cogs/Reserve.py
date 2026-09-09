@@ -378,7 +378,7 @@ class Reserve(commands.Cog):
     @reserve.subcommand(name="create_game", description="Creates an 'r' channel game for a given user. Moderator only!")
     async def create_game(self, interaction: nextcord.Interaction, 
                           st: nextcord.Member = nextcord.SlashOption(required=True)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer()
             if st.id in self.entries:
                 entry = self.entries[st.id]
@@ -398,7 +398,7 @@ class Reserve(commands.Cog):
     @reserve.subcommand(name="remove_reservation", description="Removes the reservation of the given user. Moderator only!")
     async def remove_reservation(self, interaction: nextcord.Interaction, 
                                  st: nextcord.Member = nextcord.SlashOption(required=True)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             if st.id in self.entries:
                 thread = self.entries[st.id].thread
@@ -424,7 +424,7 @@ class Reserve(commands.Cog):
     async def change_start_date(self, interaction: nextcord.Interaction, 
                                 st: nextcord.Member = nextcord.SlashOption(required=True), 
                                 new_date: str = nextcord.SlashOption(required=True, description="Accepted date formats are YYYY-MM-DD, MM-DD or the number of days until the date.")):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             start_day = parse_date(new_date)
             if start_day is None:
@@ -453,7 +453,7 @@ class Reserve(commands.Cog):
     async def change_player_minimum(self, interaction: nextcord.Interaction, 
                                     st: nextcord.Member = nextcord.SlashOption(required=True), 
                                     new_min: int = nextcord.SlashOption(required=True, min_value=0)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             if st.id in self.entries:
                 entry = self.entries[st.id]
@@ -484,7 +484,7 @@ class Reserve(commands.Cog):
     async def remove_player(self, interaction: nextcord.Interaction, 
                             player: nextcord.Member = nextcord.SlashOption(required=True), 
                             st: nextcord.Member = nextcord.SlashOption(required=True)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             if st.id not in self.entries:
                 await utility.deny_command(interaction, utility.DenialReason.NoReservation)
                 return

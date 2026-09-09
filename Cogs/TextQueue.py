@@ -111,7 +111,7 @@ class TextQueue(commands.Cog):
     async def initialize(self, interaction: nextcord.Interaction, 
                          channel_type: str = nextcord.SlashOption(required=True, choices=["Base","Regular","Experimental"]),
                          reset: bool = nextcord.SlashOption(required=False, default=False)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             await interaction.response.defer(ephemeral=True)
             embed = nextcord.Embed(title=channel_type + " storytelling queue", description="Use '/queue join' to join")
             if isinstance(interaction.channel, nextcord.Thread):
@@ -251,7 +251,7 @@ class TextQueue(commands.Cog):
     @queue.subcommand(name="remove_from_queue", description="Removes a player from the queue. Moderator only!")
     async def remove_from_queue(self, interaction: nextcord.Interaction, 
                            member: nextcord.Member = nextcord.SlashOption(required=True)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             queue = self.get_queue(member.id)
             if not queue:
                 await interaction.send("That member is not in a queue at the moment", ephemeral=True)
@@ -281,7 +281,7 @@ class TextQueue(commands.Cog):
     async def move_to_spot(self, interaction: nextcord.Interaction, 
                            member: nextcord.Member = nextcord.SlashOption(required=True), 
                            spot: int = nextcord.SlashOption(required=True, min_value=1)):
-        if await self.helper.authorize_mod_command(interaction.user):
+        if self.helper.authorize_mod_command(interaction.user):
             queue = self.get_queue(member.id)
             if not queue:
                 await interaction.send("That member is not in a queue at the moment", ephemeral=True)

@@ -205,9 +205,9 @@ class Helper:
         except nextcord.NotFound:
             return None
 
-    async def authorize_st_command(self, author: Union[nextcord.Member, nextcord.User], game_number: str):
+    def authorize_st_command(self, author: Union[nextcord.Member, nextcord.User], game_number: str):
         if isinstance(author, nextcord.User):
-            member = await self.fetch_member(author.id)
+            member = self.Guild.get_member(author.id)
             if member is None:
                 logging.warning("Non guild member attempting to use ST command")
                 return False
@@ -217,9 +217,9 @@ class Helper:
             or (self.get_st_role(game_number) in member.roles) \
             or (member.id == self.OwnerId)
 
-    async def authorize_mod_command(self, author: Union[nextcord.Member, nextcord.User]):
+    def authorize_mod_command(self, author: Union[nextcord.Member, nextcord.User]):
         if isinstance(author, nextcord.User):
-            member = await self.fetch_member(author.id)
+            member = self.Guild.get_member(author.id)
             if member is None:
                 logging.warning("Non guild member attempting to use mod command")
                 return False

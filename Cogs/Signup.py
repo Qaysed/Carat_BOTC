@@ -59,7 +59,7 @@ class Signup(commands.Cog):
                      game_number: str = nextcord.SlashOption(required=True), 
                      signup_limit: int = nextcord.SlashOption(required=True), 
                      script: str = nextcord.SlashOption(required=True)):
-        if await self.helper.authorize_st_command(interaction.user, game_number):
+        if self.helper.authorize_st_command(interaction.user, game_number):
             await interaction.response.defer(ephemeral=True)
             st_names = [st.display_name for st in self.helper.get_st_role(game_number).members]
             player_list = self.helper.get_game_role(game_number).members
