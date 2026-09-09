@@ -168,6 +168,7 @@ class Archive(commands.Cog):
             if unique_role is None:
                 unique_role = await archive_server.create_role(name=unique_role_name)
 
+            await interaction.followup.send("Beginning archive")
             # the after parameter might seem weird here. nextcord's pagination for this is broken if after isn't set
             # and after can be basically any discord object - the ID serves as a timestamp of the creation time
             # so this should get all messages in the channel
@@ -214,11 +215,11 @@ class Archive(commands.Cog):
             self.threads_by_channel.pop(channel_to_archive.id, None)
             self.store.save()
 
-            await interaction.followup.send(f"Your archive for {interaction.channel.name} is done.")
+            await utility.dm_user(interaction.user, f"Your archive for {interaction.channel.name} is done.")
             await self.helper.log(f"{interaction.user.display_name} has run the OffServerArchive Command")
             if errors > 0:
                 message += f" {errors} messages caused unknown errors and were not archived."
-                await interaction.followup.send(message, ephemeral=True)
+                await utility.dm_user(interaction.user, message)
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
