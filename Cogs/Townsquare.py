@@ -1010,7 +1010,7 @@ class Townsquare(commands.Cog):
         if game_number not in self.town_squares:
             await utility.deny_command(interaction, utility.DenialReason.NoTownSquare)
             return
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         nominee = self.get_game_participant(game_number, nominee_identifier)
         if not nominee:
             await utility.deny_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
@@ -1023,6 +1023,7 @@ class Townsquare(commands.Cog):
         game_role = self.helper.get_game_role(game_number)
         content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji,
                                             include_game_role_mention=False)
+        await interaction.followup.send("Sending...", delete_after=5, ephemeral=True)
         await interaction.followup.send(content=content, embed=embed, ephemeral=not public)
 
     @nextcord.slash_command(name="get_ts_status")

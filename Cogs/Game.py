@@ -36,7 +36,7 @@ class Game(commands.Cog):
     async def close_kibitz(self, interaction: nextcord.Interaction, 
                            game_number: str = nextcord.SlashOption(required=True, name="game_number")):
         if self.helper.authorize_st_command(interaction.user, game_number):
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             townsfolk_role = self.helper.Guild.default_role
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
@@ -83,7 +83,6 @@ class Game(commands.Cog):
                            game_number: str = nextcord.SlashOption(required=True, name="game_number"),
                            archive_name: str = nextcord.SlashOption(required=True, name="archive_name")):
         if self.helper.authorize_st_command(interaction.user, game_number):
-            await interaction.response.defer()
             townsfolk_role = self.helper.Guild.default_role
             st_role = self.helper.get_st_role(game_number)
             game_channel = self.helper.get_game_channel(game_number)
@@ -97,6 +96,7 @@ class Game(commands.Cog):
                 await interaction.followup.send(f"{self.helper.ModRole.mention} The archive category is full, so this channel "
                                                 f"cannot be archived")
                 return
+            await interaction.response.defer()
             if game_number[0] != "r":
                 new_channel = await game_channel.clone(reason="New Game")
                 await new_channel.edit(position=game_position, name=f"{game_number}-text-game", topic="")
@@ -115,7 +115,7 @@ class Game(commands.Cog):
             
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
-            await interaction.followup.send("Game successfully archived! Please drop the ST role at your soonest convenience.", ephemeral=True)
+            await interaction.followup.send(f"Game {game_number} successfully archived! Please drop the ST role at your soonest convenience.")
         else:
             await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
 
