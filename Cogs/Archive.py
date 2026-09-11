@@ -218,6 +218,7 @@ class Archive(commands.Cog):
             await utility.dm_user(interaction.user, f"Your archive for {interaction.channel.name} is done.")
             await self.helper.log(f"{interaction.user.display_name} has run the OffServerArchive Command")
             if errors > 0:
+                message = ""
                 message += f" {errors} messages caused unknown errors and were not archived."
                 await utility.dm_user(interaction.user, message)
         else:

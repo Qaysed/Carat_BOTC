@@ -121,11 +121,12 @@ class TextQueue(commands.Cog):
             else:
                 await interaction.followup.send("Please use this command in a text channel or a thread")
                 return
-            if channel_type in self.queues and reset is None:
-                queue.entries = self.queues[channel_type].entries
 
             queue_message = await interaction.channel.send(embed=embed)
             queue.message_id = queue_message.id
+            if channel_type in self.queues and not reset:
+                queue.entries = self.queues[channel_type].entries
+                await update_queue_message(queue, self.helper)
             self.queues[channel_type] = queue
 
             self.store.save()
