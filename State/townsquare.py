@@ -44,6 +44,7 @@ class Nomination:
     defense: str = "TBD"
     message: int = None
     finished: bool = False
+    number: int = 1
 
 
 @dataclass_json
