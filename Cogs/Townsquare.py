@@ -1254,8 +1254,21 @@ class CountVoteContinueView(nextcord.ui.View):
         await interaction.response.send_modal(CountVoteModal(self.session))
 
 
+# set nom numbers when updating from version without them
+def initialize_nom_numbers(cog: Townsquare):
+    for game in cog.store.town_squares:
+        town_square = cog.store.town_squares[game]
+        unfinished_noms = [nom for nom in town_square.nominations if not nom.finished]
+        nom_numbers = [nom.number for nom in unfinished_noms]
+        if len(nom_numbers) != len(set(nom_numbers)):
+            unfinished_noms.sort(key=lambda nom: nom.message)
+            for number, nom in enumerate(unfinished_noms, start=1):
+                nom.number = number
+    cog.store.save()
+
 
 async def setup(bot: commands.Bot):
     cog = Townsquare(bot, utility.Helper(bot), bot.data.townsquare)
+    initialize_nom_numbers(cog)
     await cog.load_emoji()
     bot.add_cog(cog)
