@@ -53,7 +53,7 @@ class Grimoire(commands.Cog):
                 await interaction.followup.send(f"Warning - you are taking a channel without having "
                                         f"been in the appropriate text ST queue. If that's how it's supposed to "
                                         f"be, carry on - otherwise you can drop the grimoire with `/grimoire drop {game_number}` "
-                                        f"and join the text game queue (see `/helpme` for details)")
+                                        f"and join the text game queue (see `/help` for details)")
             removed = self.queues.remove_user(interaction.user.id)
             for queue in removed:
                 await update_queue_message(queue, self.helper)

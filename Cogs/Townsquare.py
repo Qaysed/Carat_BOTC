@@ -34,7 +34,7 @@ def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: N
                           nom.votes[player.id].vote not in [confirmed_yes_vote, confirmed_no_vote]), None)
     game_role_mention = f"{game_role.mention} " if include_game_role_mention else ""
     content = (f"{game_role_mention}{nom.nominator.alias} has nominated {nom.nominee.alias}. "
-               f"This is nomination {nom.number} today\n"
+               f"This is **nomination {nom.number}** today.\n"
                f"Accusation: {nom.accusation}\n"
                f"Defense: {nom.defense}\n"
                f"Votes close {nom.deadline}. "
@@ -159,11 +159,11 @@ class Townsquare(commands.Cog):
         game_role = self.helper.get_game_role(game_number)
         content, embed = format_nom_message(game_role, self.town_squares[game_number], nom, self.emoji,
                                             include_game_role_mention=False)
-        if message is not None and message.created_at <= utcnow() - datetime.timedelta(minutes=5):
+        if message is not None and message.created_at <= utcnow() - datetime.timedelta(minutes=59):
             # keep the initial nom message around
             if message.content.startswith(game_role.mention):
                 await message.edit(
-                    content=f"**! This message is outdated now. Scroll down for an up to date version!**\n{message.content}",
+                    content=f"**This message is outdated now. Scroll down for an up to date version!**\n{message.content}",
                     embed=None,
                 )
             else:
@@ -175,6 +175,18 @@ class Townsquare(commands.Cog):
             nom.message = message.id
         else:
             await message.edit(content=content, embed=embed)
+        if not message.pinned and not nom.finished:
+            try:
+                await message.pin()
+            except nextcord.HTTPException as e:
+                logging.warning(f"Failed to pin message {message.id} "
+                                f"in game {game_number}, thread {nomination_thread.id}. Error: {e.code} {e.text}")
+        if message.pinned and nom.finished:
+            try:
+                await message.unpin()
+            except nextcord.HTTPException as e:
+                logging.warning(f"Failed to unpin message {message.id} "
+                                f"in game {game_number}, thread {nomination_thread.id}. Error: {e.code} {e.text}")
         self.store.save()
 
     async def announce_vote(self, game_number: str, voter: Player, nom: Nomination, vote: str) -> None:
@@ -484,7 +496,7 @@ class Townsquare(commands.Cog):
         if game_number not in self.town_squares:
             await utility.deny_command(interaction, utility.DenialReason.NoTownSquare)
             return
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         game_role = self.helper.get_game_role(game_number)
         # check permission
         can_nominate = self.helper.authorize_st_command(interaction.user, game_number) or game_role in interaction.user.roles
@@ -549,7 +561,7 @@ class Townsquare(commands.Cog):
             await utility.deny_command(interaction, "Your accusation is too long. Consider posting it in public and "
                                             "setting a link to the message as your accusation.")
             return
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         if nominee_identifier:
             nominee = self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
@@ -755,7 +767,7 @@ class Townsquare(commands.Cog):
             return
         game_role = self.helper.get_game_role(game_number)
         if game_role in interaction.user.roles:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             nominee = self.get_game_participant(game_number, nominee_identifier)
             if not nominee:
                 await utility.deny_command(interaction, f"Could not clearly identify any player from {nominee_identifier}")
@@ -828,7 +840,7 @@ class Townsquare(commands.Cog):
         else:
             await utility.deny_command(interaction, "You must be a player to vote. "
                                             "If you are, the ST may have to add you to the town square.")
-
+# TODO: handle button clicks when all players are through
     @nextcord.slash_command(name="count_votes")
     async def CountVotes(self, interaction: nextcord.Interaction, game_number: str, nominee_identifier: str):
         if game_number not in self.town_squares:
