@@ -52,7 +52,7 @@ class Signup(commands.Cog):
         output_string += "\nKibitz members:\n"
         output_string += "\n".join(kibitz_names)
 
-        interaction.followup.send(output_string)
+        await interaction.followup.send(output_string)
 
     @signups.subcommand(name="show", description="Posts a message listing the signed up players in the game channel with buttons to sign up with.")
     async def show_signups(self, interaction: nextcord.Interaction, 
