@@ -50,7 +50,7 @@ class CreateThreadsModal(nextcord.ui.Modal):
             if self.message.value is not None and self.message.value != "":
                 await thread.send(self.message.value)
             await asyncio.sleep(10)
-        await interaction.followup.send("Done")
+        await interaction.followup.send(f"Done {utility.CompletedEmoji}")
 
 class SendToThreadsModal(nextcord.ui.Modal): 
     game_channel: nextcord.TextChannel
@@ -72,8 +72,8 @@ class SendToThreadsModal(nextcord.ui.Modal):
         for thread in threads:
             if "ST Thread" in thread.name:
                 await thread.send(self.message.value)
-        await interaction.followup.send("Done")
-    
+        await interaction.followup.send(f"Done {utility.CompletedEmoji}")
+
 class Other(commands.Cog):
 
     def __init__(self, bot: commands.Bot, helper: utility.Helper, townsquares: TownSquareStore):
@@ -154,6 +154,7 @@ class Other(commands.Cog):
             "`/private_vote` — Set a vote visible only to storytellers.\n"
             "`/remove_private_vote` — Use your public vote again.\n"
             "`/count_votes` — Start counting a nomination's votes.\n"
+            "`/ping_missing_votes` — Ping players who have not voted.\n"
             "`/set_vote` — Set another player's vote as storyteller.\n\n"
             "**Settings**\n"
             "`/set_alias` — Set the name shown in the town square.\n"
@@ -185,7 +186,7 @@ class Other(commands.Cog):
         }
 
     @nextcord.slash_command(name="help", description="Shows Carat's available slash commands.")
-    async def HelpMe(
+    async def help(
             self,
             interaction: nextcord.Interaction,
             command_type: str = nextcord.SlashOption(
@@ -204,7 +205,7 @@ class Other(commands.Cog):
         )
 
     @nextcord.slash_command(name="start_whisper", description="Start a private thread with the chosen user(s)")
-    async def StartWhisper(self, interaction: nextcord.Interaction,
+    async def start_whisper(self, interaction: nextcord.Interaction,
                            title: str = nextcord.SlashOption(required=True, description="Thread title"),
                            p1: nextcord.Member = nextcord.SlashOption(required=False, name="player1"),
                            p2: nextcord.Member = nextcord.SlashOption(required=False, name="player2"),
@@ -246,10 +247,10 @@ class Other(commands.Cog):
                            p3: nextcord.Member = nextcord.SlashOption(required=False, name="player3"),
                            p4: nextcord.Member = nextcord.SlashOption(required=False, name="player4"),
                            p5: nextcord.Member = nextcord.SlashOption(required=False, name="player5")):
-        await self.StartWhisper(interaction, title, p1, p2, p3, p4, p5)
+        await self.start_whisper(interaction, title, p1, p2, p3, p4, p5)
 
     @nextcord.slash_command(name="create_threads", description="Create an ST thread for each player")
-    async def CreateThreads(self, interaction: nextcord.Interaction, game_number: str):
+    async def create_threads(self, interaction: nextcord.Interaction, game_number: str):
         if self.helper.authorize_st_command(interaction.user, game_number):
             game_channel = self.helper.get_game_channel(game_number)
             players = self.helper.get_game_role(game_number).members
@@ -264,7 +265,7 @@ class Other(commands.Cog):
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
     @nextcord.slash_command(name="send_to_threads", description="Send a message to each ST thread")
-    async def SendToThreads(self, interaction: nextcord.Interaction, game_number: str):
+    async def send_to_threads(self, interaction: nextcord.Interaction, game_number: str):
         if self.helper.authorize_st_command(interaction.user, game_number):
             game_channel = self.helper.get_game_channel(game_number)
             modal = SendToThreadsModal(game_channel)

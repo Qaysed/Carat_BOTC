@@ -46,6 +46,8 @@ class DenialReason(Enum):
     NotAThread = f"{SweatSmileEmoji} This command can only be used in a thread"
     NotATextChannel = f"{SweatSmileEmoji} This command can only be used in a text channel"
     NotArchiveServer = f"{SweatSmileEmoji} This command can be used in an registered archive server"
+    UnclearPlayer = f"{ConfusedEmoji} Could not clearly identify a player from provided identifier"
+    NoNomination = f"{ConfusedEmoji} Could not find the nomination"
 
 def authorize_dev_command(author: Union[nextcord.Member, nextcord.User, None]) -> bool:
     if author is None: 

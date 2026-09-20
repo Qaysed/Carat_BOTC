@@ -247,10 +247,10 @@ class Reserve(commands.Cog):
         self.store.save()
 
     @nextcord.slash_command(name="rsvp", description="Deals with everything RSVP entries.")
-    async def reserve(self, interaction: nextcord.Interaction):
+    async def rsvp(self, interaction: nextcord.Interaction):
         pass
 
-    @reserve.subcommand(name="reserve_game", description="Reserves a game for you to ST starting on the given start date (min 2 weeks).")
+    @rsvp.subcommand(name="reserve_game", description="Reserves a game for you to ST starting on the given start date (min 2 weeks).")
     async def reserve_game(self, interaction: nextcord.Interaction, 
                           min_players: int = nextcord.SlashOption(required=True, min_value=0), 
                           start: str = nextcord.SlashOption(required = True, description="Accepted date formats are YYYY-MM-DD, MM-DD or the number of days until the date.")):
@@ -274,7 +274,7 @@ class Reserve(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.NotRSVPForum)
 
-    @reserve.subcommand(name="signups", description="Posts a signup message for your RSVP game.")
+    @rsvp.subcommand(name="signups", description="Posts a signup message for your RSVP game.")
     async def signups(self, interaction: nextcord.Interaction, 
                       max_players: int = nextcord.SlashOption(required=True), 
                       script: str = nextcord.SlashOption(required=True)):
@@ -291,7 +291,7 @@ class Reserve(commands.Cog):
             await thread.send(embed=embed, view=PreSignupView(self, self.helper, entry))
             await interaction.followup.send(f"Sign up list sent to your forum post")
 
-    @reserve.subcommand(name="add_st", description="Adds a co-ST to your entry.")
+    @rsvp.subcommand(name="add_st", description="Adds a co-ST to your entry.")
     async def add_st(self, interaction: nextcord.Interaction, 
                      co_st: nextcord.Member = nextcord.SlashOption(required=True)):
         if interaction.user.id not in self.entries:
@@ -304,7 +304,7 @@ class Reserve(commands.Cog):
             await interaction.followup.send(f"{co_st.display_name} added as a co-ST!")
             await self.helper.log(f"{interaction.user.mention} has added {co_st.mention} as a co-ST for their RSVP entry")
 
-    @reserve.subcommand(name="remove_st", description="Removes a co-ST from your entry.")
+    @rsvp.subcommand(name="remove_st", description="Removes a co-ST from your entry.")
     async def remove_st(self, interaction: nextcord.Interaction, 
                          co_st: nextcord.Member = nextcord.SlashOption(required=True)):
         if interaction.user.id not in self.entries:
@@ -317,8 +317,8 @@ class Reserve(commands.Cog):
             await interaction.followup.send(f"{co_st.display_name} removed as a co-ST!")
             await self.helper.log(f"{interaction.user.mention} has removed {co_st.mention} as a co-ST for their RSVP entry")
 
-    @reserve.subcommand(name="switch_to_queue", description="Cancels your reserved game and joins one of the queues.")
-    async def switch_to_queue_command(self, interaction: nextcord.Interaction, 
+    @rsvp.subcommand(name="switch_to_queue", description="Cancels your reserved game and joins one of the queues.")
+    async def switch_to_queue(self, interaction: nextcord.Interaction, 
                               channel_type: str = nextcord.SlashOption(required=True, choices=["Base","Regular","Experimental"]), 
                               availability: str = nextcord.SlashOption(required=True, default="ASAP")):
         if interaction.user.id not in self.entries:
@@ -335,7 +335,7 @@ class Reserve(commands.Cog):
             await interaction.followup.send(f"Your game has been move to the {channel_type} queue")
             await self.helper.log(f"{interaction.user.mention} moved their RSVP entry to the {channel_type} queue")
 
-    @reserve.subcommand(name="cancel_game", description="Cancels your reserved game.")
+    @rsvp.subcommand(name="cancel_game", description="Cancels your reserved game.")
     async def cancel_game(self, interaction: nextcord.Interaction):
         if interaction.user.id not in self.entries:
             await utility.deny_command(interaction, utility.DenialReason.NoReservation)
@@ -348,7 +348,7 @@ class Reserve(commands.Cog):
             await interaction.followup.send(f"Your game has been cancelled")
             await self.helper.log(f"{interaction.user.mention} has cancelled their RSVP game")
 
-    @reserve.subcommand(name="list", description="Lists the reserved games starting in the next specified number of days.")
+    @rsvp.subcommand(name="list", description="Lists the reserved games starting in the next specified number of days.")
     async def list_reserve_games(self, interaction: nextcord.Interaction, 
                                  days: int = nextcord.SlashOption(required=True, min_value=0)):
         await interaction.response.defer()
@@ -375,7 +375,7 @@ class Reserve(commands.Cog):
             embed.add_field(name=name, value=description, inline=False)
         await interaction.followup.send(embed=embed)
 
-    @reserve.subcommand(name="create_game", description="Creates an 'r' channel game for a given user. Moderator only!")
+    @rsvp.subcommand(name="create_game", description="Creates an 'r' channel game for a given user. Moderator only!")
     async def create_game(self, interaction: nextcord.Interaction, 
                           st: nextcord.Member = nextcord.SlashOption(required=True)):
         if self.helper.authorize_mod_command(interaction.user):
@@ -395,7 +395,7 @@ class Reserve(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
-    @reserve.subcommand(name="remove_reservation", description="Removes the reservation of the given user. Moderator only!")
+    @rsvp.subcommand(name="remove_reservation", description="Removes the reservation of the given user. Moderator only!")
     async def remove_reservation(self, interaction: nextcord.Interaction, 
                                  st: nextcord.Member = nextcord.SlashOption(required=True)):
         if self.helper.authorize_mod_command(interaction.user):
@@ -420,7 +420,7 @@ class Reserve(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
-    @reserve.subcommand(name="change_start_date", description="Moderator Only! Changes the start date of the reservation of the given user.")
+    @rsvp.subcommand(name="change_start_date", description="Moderator Only! Changes the start date of the reservation of the given user.")
     async def change_start_date(self, interaction: nextcord.Interaction, 
                                 st: nextcord.Member = nextcord.SlashOption(required=True), 
                                 new_date: str = nextcord.SlashOption(required=True, description="Accepted date formats are YYYY-MM-DD, MM-DD or the number of days until the date.")):
@@ -449,7 +449,7 @@ class Reserve(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
-    @reserve.subcommand(name="change_player_minimum", description="Changes the required number of players for the reservation of the given member. Moderator only")
+    @rsvp.subcommand(name="change_player_minimum", description="Changes the required number of players for the reservation of the given member. Moderator only")
     async def change_player_minimum(self, interaction: nextcord.Interaction, 
                                     st: nextcord.Member = nextcord.SlashOption(required=True), 
                                     new_min: int = nextcord.SlashOption(required=True, min_value=0)):
@@ -480,7 +480,7 @@ class Reserve(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
-    @reserve.subcommand(name="remove_player", description="Moderator only! Manually removes a player from a game")
+    @rsvp.subcommand(name="remove_player", description="Moderator only! Manually removes a player from a game")
     async def remove_player(self, interaction: nextcord.Interaction, 
                             player: nextcord.Member = nextcord.SlashOption(required=True), 
                             st: nextcord.Member = nextcord.SlashOption(required=True)):
@@ -528,7 +528,7 @@ class Reserve(commands.Cog):
                 self.remove_entry(entry.owner)
                 self.announced[entry.owner] = entry
 
-    @reserve.subcommand(name="get_json", description="Developer command! Sends the user a json of all the reserve entries.")
+    @rsvp.subcommand(name="get_json", description="Developer command! Sends the user a json of all the reserve entries.")
     async def get_json(self, interaction: nextcord.Interaction):
         if utility.authorize_dev_command(interaction.user):
             json_data = {}

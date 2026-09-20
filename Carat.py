@@ -112,7 +112,7 @@ def get_level(line: str) -> Optional[int]:
 
 
 @bot.slash_command(name="send_logs", description="Send Carat program logs. Developer only")
-async def SendLogs(interaction: Interaction, 
+async def send_logs(interaction: Interaction, 
                    limit: int = SlashOption(name="number_of_lines"), 
                    level: int = SlashOption(name="log_level", 
                                             choices={"ERROR": logging.ERROR, "WARNING": logging.WARN, "INFO": logging.INFO, "DEBUG": logging.DEBUG}, 
@@ -176,7 +176,7 @@ def download_file(url, local_directory, local_filename):
 
 
 @bot.slash_command(name="reload_cogs", description="Gets current versions of the extension files and reloads them")
-async def ReloadCogs(interaction: Interaction):
+async def reload_cogs(interaction: Interaction):
     if not await bot.is_owner(interaction.user):
         await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         return
@@ -242,7 +242,7 @@ async def ReloadCogs(interaction: Interaction):
 
 
 @bot.slash_command(name="reload_main_files", description="Downloads updated Carat.py and utility.py from GitHub.")
-async def ReloadMainFiles(interaction: Interaction):
+async def reload_main_files(interaction: Interaction):
     if not await bot.is_owner(interaction.user):
         await utility.deny_command(interaction, utility.DenialReason.NoPermission)
         return
@@ -271,7 +271,7 @@ async def ReloadMainFiles(interaction: Interaction):
 
 
 @bot.slash_command(name="restart")
-async def Restart(interaction: Interaction):
+async def restart(interaction: Interaction):
     if utility.authorize_dev_command(interaction.user):
         await interaction.send("Restarting...", ephemeral=True)
         logging.warning("Trying to restart Carat...")
