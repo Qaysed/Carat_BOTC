@@ -792,7 +792,6 @@ class Townsquare(commands.Cog):
                                                 "you cannot set your vote to it.")
                 return
             nom.private_votes[voter.id] = vote
-            await self.update_nom_message(game_number, nom)
             self.store.save()
             await interaction.followup.send(f"Done {utility.CompletedEmoji}", ephemeral=True)
             await self.log(game_number,
