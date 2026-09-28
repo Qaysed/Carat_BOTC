@@ -22,7 +22,7 @@ SweatSmileEmoji = '\U0001F605' # 😅
 
 MaxGameNumber = 15
 PotentialGames = [game for n in range(1, MaxGameNumber) for game in [str(n), f"b{n}", f"x{n}", f"r{n}"]]
-DeveloperIds = [962747550656528425, 966753006227955832, 224643391873482753]
+DeveloperIds = [962747550656528425, 966753006227955832, 224643391873482753, 161112147429031936]
 
 class DenialReason(Enum):
     MemberCommand = f"{DeniedEmoji} This command must be used as a server member, i.e. not via DMs."
