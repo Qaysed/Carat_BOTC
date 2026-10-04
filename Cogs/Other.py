@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import nextcord
 from nextcord.ext import commands
@@ -81,7 +81,7 @@ class Other(commands.Cog):
         self.helper = helper
         self.townsquares = townsquares
 
-    def _help_pages(self) -> dict[str, list[nextcord.Embed]]:
+    def _help_pages(self) -> Dict[str, List[nextcord.Embed]]:
         """Build the slash-command help pages, grouped by their intended users."""
         def page(title: str, description: str) -> nextcord.Embed:
             return nextcord.Embed(title=title, description=description, color=0xe100ff)
@@ -234,7 +234,9 @@ class Other(commands.Cog):
                 else:
                     await interaction.followup.send(f"{player.display_name} cannot send messages in threads so they "
                                                       f"were not added to \"{title}\"", ephemeral=True)
-            await interaction.followup.send(f"Started whisper with {", ".join([w.display_name for w in whisperers])}")
+            await interaction.followup.send(
+                f"Started whisper with {', '.join([w.display_name for w in whisperers])}"
+            )
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 

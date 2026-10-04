@@ -111,10 +111,22 @@ class Game(commands.Cog):
                 else:
                     await game_channel.set_permissions(st, manage_threads=True)
             await game_channel.edit(category=archive_category, name=archive_name, topic="")
-            
+
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await kibitz_channel.set_permissions(townsfolk_role, view_channel=False)
-            await interaction.followup.send(f"Game {game_number} successfully archived! Please drop the ST role at your soonest convenience.")
+            await interaction.followup.send(
+                f"Game {game_number} successfully archived! Please drop the ST role at your soonest convenience."
+            )
+
+            notify_channel = await self.helper.get_archive_notify_channel()
+            if notify_channel is not None:
+                run_location = interaction.channel.jump_url if interaction.channel else "(unknown)"
+                await notify_channel.send(
+                    f"{interaction.user.mention} ran `/archive_game` for game **{game_number}** "
+                    f"(archived as **{archive_name}**).\n"
+                    f"Archived channel: {game_channel.jump_url}\n"
+                    f"Command used in: {run_location}"
+                )
         else:
             await utility.deny_command(interaction, utility.DenialReason.InvalidGame)
 
