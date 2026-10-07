@@ -25,8 +25,8 @@ class Game(commands.Cog):
             game_role = self.helper.get_game_role(game_number)
             await interaction.followup.send(
                 f"{game_role.mention} Kibitz is now being opened (found [here]({kibitz_channel.jump_url})) - remove your game role to access it. " +
-                f"Remember to give your ST(s) any feedback you may have!\n" +
-                f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A")
+                f"Remember to give your ST(s) any feedback you may have! Just use YAGPDB's `/feedback` command"
+            )
         else:
             await utility.deny_command(interaction, utility.DenialReason.NoPermission)
 
@@ -56,8 +56,7 @@ class Game(commands.Cog):
             kibitz_channel = self.helper.get_kibitz_channel(game_number)
             await interaction.followup.send(
                 f"{game_role.mention} Kibitz is now being opened (found [here]({kibitz_channel.jump_url})). "
-                f"Remember to give your ST(s) any feedback you may have!\n" +
-                f"Feedback form: https://forms.gle/3PsSPs4TznRkMhY8A"
+                f"Remember to give your ST(s) any feedback you may have! Just use YAGPDB's `/feedback` command"
             )
             members = game_role.members
             members += kibitz_role.members
