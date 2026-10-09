@@ -4,7 +4,6 @@ import os
 import re
 import sys
 import tempfile
-import traceback
 from typing import Optional, List
 
 import nextcord
@@ -12,9 +11,7 @@ import requests
 from dotenv import load_dotenv
 from nextcord import Interaction, SlashOption
 from nextcord.ext import commands
-from nextcord.ext.commands import CommandError
 from nextcord.utils import utcnow
-
 
 import utility
 from State import DataLayer

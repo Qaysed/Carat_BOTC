@@ -9,6 +9,7 @@ from math import ceil
 from typing import List, Optional, Dict, Union, Callable, Literal
 
 import nextcord
+from nextcord import Colour
 from nextcord.ext import commands
 from nextcord.utils import get, utcnow, format_dt
 
@@ -22,6 +23,12 @@ voted_yes_emoji = '\U00002705'  # ✅
 voted_no_emoji = '\U0000274C'  # ❌
 clock_emoji = '\U0001f566'  # 🕦
 
+NomColorMapping = {0: Colour.orange(),
+                   1: Colour.red(), # since nominations are 1-indexed, the color rotation starts here
+                   2: Colour.gold(),
+                   3: Colour.green(),
+                   4: Colour.blue(),
+                   5: Colour.purple()}
 
 def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: Nomination,
                        emoji: Dict[str, nextcord.PartialEmoji], include_game_role_mention: bool = True) -> tuple[str, nextcord.Embed]:
@@ -40,7 +47,7 @@ def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: N
                f"Votes close {nom.deadline}. "
                f"{votes_needed} votes required to put {nom.nominee.alias} on the block.\n")
     embed = nextcord.Embed(title="Votes",
-                           color=0xff0000)
+                           color=NomColorMapping[nom.number % 6])
     counter = 0
     for player in players:
         name = player.alias + " (Nominator)" if player == nom.nominator else player.alias
