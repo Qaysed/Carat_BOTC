@@ -871,7 +871,10 @@ class Townsquare(commands.Cog):
             if not nominee:
                 await utility.deny_command(interaction, utility.DenialReason.UnclearPlayer)
                 return
-            nom = next((n for n in self.town_squares[game_number].nominations if n.nominee.id == nominee.id), None)
+            nom = next(
+                (n for n in self.town_squares[game_number].nominations if n.nominee.id == nominee.id and not n.finished),
+                None
+            )
             if not nom:
                 await utility.deny_command(interaction, utility.DenialReason.NoNomination)
                 return
