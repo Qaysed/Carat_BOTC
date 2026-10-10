@@ -118,7 +118,9 @@ class Archive(commands.Cog):
             await utility.deny_command(interaction, utility.DenialReason.NotAThread)
 
     # TODO: Load archive servers from .env to remove hardcoded ids
-    @archive.subcommand(name="claim_role", description="Claims your unique role for this server, this allows you to view threads of games you STed.", guild_ids=ARCHIVE_SERVER_IDS)
+    @nextcord.slash_command(name="claim_role",
+                        description="Claims your unique role for this server, this allows you to view threads of games you STed.",
+                        guild_ids=ARCHIVE_SERVER_IDS)
     async def claim_role(self, interaction: nextcord.Interaction):
         await interaction.response.defer(ephemeral=True)
         if interaction.guild_id is None or interaction.guild_id not in ARCHIVE_SERVER_IDS:
