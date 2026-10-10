@@ -11,6 +11,8 @@ from State.archive import ArchiveStore, ThreadList
 
 ivy_id = 183474450237358081
 
+ARCHIVE_SERVER_IDS = [959219314014163036, 1203126128693354516, 1317487976309329920, 1447544308675907656]
+
 async def copy_history(target: nextcord.abc.Messageable, history: AsyncIterator[Message]) -> int:
     errors = 0
     async for message in history:
@@ -115,12 +117,11 @@ class Archive(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.NotAThread)
 
-    # TODO: enable command in archive servers, load archive servers from .env
-    @archive.subcommand(name="claim_role", description="Claims your unique role for this server, this allows you to view threads of games you STed.")
+    # TODO: Load archive servers from .env to remove hardcoded ids
+    @archive.subcommand(name="claim_role", description="Claims your unique role for this server, this allows you to view threads of games you STed.", guild_ids=ARCHIVE_SERVER_IDS)
     async def claim_role(self, interaction: nextcord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        # TODO: Remove hard coded archive server ids - probably via a set up command or .env-dist
-        if interaction.guild_id is None or interaction.guild_id not in [959219314014163036, 1203126128693354516, 1317487976309329920, 1447544308675907656]:
+        if interaction.guild_id is None or interaction.guild_id not in ARCHIVE_SERVER_IDS:
             await utility.deny_command(interaction, utility.DenialReason.NotArchiveServer)
             return
         archive_server = interaction.guild
