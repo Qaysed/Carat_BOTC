@@ -54,7 +54,6 @@ intents.members = True
 allowedMentions = nextcord.AllowedMentions.all()
 allowedMentions.everyone = False
 
-# TDOD: remove prefix once all commands are gone
 bot = commands.Bot(intents=intents,
                    allowed_mentions=allowedMentions,
                    owner_id=owner_id,

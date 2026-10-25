@@ -128,13 +128,6 @@ class Helper:
         self.LogChannel = require(get(self.Guild.channels, id=int(os.environ['LOG_CHANNEL_ID'])), "LogChannel")
         if not isinstance(self.LogChannel, nextcord.abc.Messageable):
             raise EnvironmentError("Log channel must be messageable")
-        try:
-            self.SecondaryOutputChannel = get(self.Guild.channels, id=int(os.environ['SECONDARY_OUTPUT_CHANNEL']))
-        except:
-            self.SecondaryOutputChannel = None
-            logging.warning("Could not load secondary output channel from environment, continuing without it")
-        if self.SecondaryOutputChannel and not isinstance(self.SecondaryOutputChannel, nextcord.abc.Messageable):
-            logging.warning("Secondary output channel not messageable, continuing without it")
         self.StorageLocation = os.environ['STORAGE_LOCATION']
         self.OwnerId = int(os.environ['OWNER_ID'])
 
