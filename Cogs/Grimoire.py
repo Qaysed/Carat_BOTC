@@ -60,8 +60,6 @@ class Grimoire(commands.Cog):
         else:
             await utility.deny_command(interaction, utility.DenialReason.AlreadySTS)
         await self.helper.log(f"{interaction.user.mention} has run the grimoire claim command for game {game_number}")
-        if self.helper.SecondaryOutputChannel:
-            await self.helper.SecondaryOutputChannel.send(f"{interaction.user.mention} has run the grimoire claim command for game {game_number}")
 
     @grimoire.subcommand(name="give", description="Removes the ST role from you and gives it to another member.")
     async def grimoire_give(self, interaction: nextcord.Interaction, 
