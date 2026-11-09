@@ -375,11 +375,11 @@ class Townsquare(commands.Cog):
                 player_left_server = True
             else:
                 player = current_player
+        await interaction.response.send_modal(SubPlayerReasonModal(game_number, player, self.helper))
         if player_left_server:
             await self.SubstitutePlayerLeftServer(interaction, game_number, player, substitute)
             return
         if self.helper.authorize_st_command(interaction.user, game_number):
-            await interaction.response.defer()
             player_list = self.town_squares[game_number].players
             current_player = next((p for p in player_list if p.id == player.id), None)
             substitute_existing_player = next((p for p in player_list if p.id == substitute.id), None)
@@ -1289,21 +1289,31 @@ class CountVoteContinueView(nextcord.ui.View):
         await interaction.response.send_modal(CountVoteModal(self.session))
 
 
-# set nom numbers when updating from version without them
-def initialize_nom_numbers(cog: Townsquare):
-    for game in cog.store.town_squares:
-        town_square = cog.store.town_squares[game]
-        unfinished_noms = [nom for nom in town_square.nominations if not nom.finished]
-        nom_numbers = [nom.number for nom in unfinished_noms]
-        if len(nom_numbers) != len(set(nom_numbers)):
-            unfinished_noms.sort(key=lambda nom: nom.message)
-            for number, nom in enumerate(unfinished_noms, start=1):
-                nom.number = number
-    cog.store.save()
+class SubPlayerReasonModal(nextcord.ui.Modal):
+    def __init__(self, game_number: str, player, helper: utility.Helper):
+        super().__init__(title="Substitute Reasoning")
+        self.game_number = game_number
+        if type(player) == nextcord.Member or type(player) == nextcord.User:
+            self.player = player.mention 
+        elif type(player) == Player:
+            self.player = f"{player.alias} ({player.id})"
+        else:
+            self.player = str(player)
+        self.helper = helper
+        self.reason = nextcord.ui.TextInput(label="Reason for player subbing out:", required=True)
+        self.add_item(self.reason)
+
+    async def callback(self, interaction):
+        return_channel = self.helper.bot.get_channel(1337130526204760167) # Happy to leave this hardcoded for now - it's a modside thread for logging subs
+        return_str = f"{self.player} has been substituted out of game {self.game_number} by {interaction.user.mention}, reason:\n `{self.reason.value}`"
+        if return_channel:
+            await return_channel.send(return_str)
+        else:
+            await self.helper.log(return_str)
+        
 
 
 async def setup(bot: commands.Bot):
     cog = Townsquare(bot, utility.Helper(bot), bot.data.townsquare)
-    initialize_nom_numbers(cog)
     await cog.load_emoji()
     bot.add_cog(cog)
