@@ -40,8 +40,8 @@ def format_nom_message(game_role: nextcord.Role, town_square: TownSquare, nom: N
     current_voter = next((player for player in players if player.can_vote and
                           nom.votes[player.id].vote not in [confirmed_yes_vote, confirmed_no_vote]), None)
     game_role_mention = f"{game_role.mention} " if include_game_role_mention else ""
-    content = (f"{game_role_mention}{nom.nominator.alias} has nominated {nom.nominee.alias}. "
-               f"This is **nomination {nom.number}** today.\n"
+    content = (f"# Nomination {nom.number}\n"
+               f"{game_role_mention}{nom.nominator.alias} has nominated {nom.nominee.alias}. \n"               
                f"Accusation: {nom.accusation}\n"
                f"Defense: {nom.defense}\n"
                f"Votes close {nom.deadline}. "
@@ -168,7 +168,7 @@ class Townsquare(commands.Cog):
                                             include_game_role_mention=False)
         if message is not None and message.created_at <= utcnow() - datetime.timedelta(minutes=59):
             # keep the initial nom message around
-            if message.content.startswith(game_role.mention):
+            if game_role.mention in message.content:
                 await message.edit(
                     content=f"**This message is outdated now. Scroll down for an up to date version!**\n{message.content}",
                     embed=None,

@@ -97,12 +97,12 @@ class SignupView(nextcord.ui.View):
     @nextcord.ui.button(label="Sign Up", custom_id="Sign_Up_Command", style=nextcord.ButtonStyle.green)
     async def signup_callback(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         signup_message = interaction.message
-        number_of_fields = signup_message.embeds[0].to_dict()
-        game_number = str(number_of_fields["footer"]["text"])
+        embed = signup_message.embeds[0].to_dict()
+        game_number = str(embed["footer"]["text"])
         game_role = self.helper.get_game_role(game_number)
         st_role = self.helper.get_st_role(game_number)
         kibitz_role = self.helper.get_kibitz_role(game_number)
-        signup_limit = len(number_of_fields["fields"])
+        signup_limit = len(embed["fields"])
         no_of_signups = len(game_role.members)
 
         if game_role in interaction.user.roles:
