@@ -1236,22 +1236,35 @@ class CountVoteSession:
             )
 
 
+def count_as_default(public_vote: str, private_vote: Optional[str]) -> str:
+    """Prefill Count as when the effective vote is an unambiguous yes/no."""
+    if public_vote == confirmed_yes_vote:
+        return "yes"
+    if public_vote == confirmed_no_vote:
+        return "no"
+    effective = private_vote if private_vote is not None else public_vote
+    if effective.strip().lower() in {"yes", "no"}:
+        return effective.strip().lower()
+    return ""
+
+
 class CountVoteModal(nextcord.ui.Modal):
     def __init__(self, session: CountVoteSession):
         player = session.current_player
         public_vote = session.nom.votes[player.id].vote
-        private_vote = session.nom.private_votes.get(player.id, "none")
+        private_vote = session.nom.private_votes.get(player.id)
         super().__init__(f"Count vote: {player.alias}"[:45])
         self.session = session
         self.state = nextcord.ui.TextInput(
             label="Nomination state (reference only)", style=nextcord.TextInputStyle.paragraph,
             default_value=session.state_summary(), required=False, max_length=4000,
         )
-        placeholder = f"Public: {public_vote}; private: {private_vote}"
+        private_display = private_vote if private_vote is not None else "none"
+        placeholder = f"Public: {public_vote}; private: {private_display}"
         self.vote = nextcord.ui.TextInput(
             label="Count as (yes/no)",
             placeholder=placeholder if len(placeholder) < 100 else "Vote too long for placeholder, check above",
-            default_value="yes" if public_vote == confirmed_yes_vote else "no" if public_vote == confirmed_no_vote else "",
+            default_value=count_as_default(public_vote, private_vote),
             required=True, max_length=3,
         )
         self.multiplier = nextcord.ui.TextInput(
